@@ -3,35 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
 /deepseek-harness-cli:
-  en: e2fb474a5147b827
-  zh: 40fa6791f311b35f
-/deepseek-harness-cli/terminal-coding-agent:
-  en: 3703989581f10779
-  zh: ade6b2298a1d0154
+  en: 9cb8440bbafe8aac
+  zh: 8b4d4c665e2c0017
+/deepseek-harness-cli/built-for-terminal-work:
+  en: 927ebea26fe79687
+  zh: 15faf054480428c6
+/deepseek-harness-cli/quick-start:
+  en: e3054520de97dad1
+  zh: 05e07c84db5d3011
+/deepseek-harness-cli/daily-workflow:
+  en: fda2d91c8437e5fb
+  zh: ccf7c5536c421d57
+/deepseek-harness-cli/daily-workflow/keyboard-essentials:
+  en: f90a960e684b8dfb
+  zh: cef8699ec39298c8
+/deepseek-harness-cli/screenshots:
+  en: 3dd271bd7a85d7be
+  zh: fdc7a836329cb376
 /deepseek-harness-cli/developer-preview:
-  en: 4ef4d8a71ac143f0
-  zh: 1bfc3149ba8e5543
-/deepseek-harness-cli/run:
-  en: 4e0248e4c6474fc6
-  zh: eb2fb8d78c7d6bc0
-/deepseek-harness-cli/run/run-from-npm:
-  en: e22005cd42e6cbad
-  zh: 0f536f4208df1d60
-/deepseek-harness-cli/run/run-from-source:
-  en: 819e3f7c144d0d64
-  zh: de815f040975dba7
+  en: 46801376737cdd9d
+  zh: 36d15e168f384ad9
+/deepseek-harness-cli/other-interfaces:
+  en: 4f7a617461b329fc
+  zh: 5587ca22932c753b
 /deepseek-harness-cli/community-and-support:
-  en: 20acf6451fdc869b
-  zh: d06246dd019ecef7
+  en: a782d9a0901d3be8
+  zh: b491711407581da9
 /deepseek-harness-cli/contributing:
-  en: cabc2d3e9f8898bd
-  zh: 83b6d238bae29ce3
-/deepseek-harness-cli/development:
-  en: 803ca2b11b497bed
-  zh: 8b4071eb0e7783ef
-/deepseek-harness-cli/citation:
-  en: 6704e9e5a8d49a91
-  zh: 85c9cdd8d56f8e9d
+  en: e84914ae05979f2c
+  zh: d62166d3a82d1e17
+/deepseek-harness-cli/built-on-deepseek-harness:
+  en: c4e268e43d7b32d5
+  zh: 601e9f7b5904154d
 /deepseek-harness-cli/license:
-  en: 926995344fc1c72b
-  zh: c92fab5abf85932f
+  en: 8c05abee13fccefd
+  zh: d19af47f6d2be143

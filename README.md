@@ -2,77 +2,171 @@
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+[![Interface: Rust + Ratatui](https://img.shields.io/badge/interface-Rust_%2B_Ratatui-67b7ff?style=flat-square&labelColor=171e28)](native/cli/README.md) [![Status: developer preview](https://img.shields.io/badge/status-developer_preview-f1c27b?style=flat-square&labelColor=171e28)](#developer-preview) [![License: MIT](https://img.shields.io/badge/license-MIT-8dd6b4?style=flat-square&labelColor=171e28)](LICENSE)
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+**Your project. Your next move.**
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+Inspect a codebase, make changes, and work through test failures from your terminal. Install once, open a project, and type **`dsh`**.
 
-## Terminal coding agent
+This independent fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) pairs a native **Rust + Ratatui** interface with the existing Node.js agent engine. Tools and persisted sessions stay in the harness; your workspace stays in the terminal.
 
-This fork provides a Rust terminal frontend. After installing, run **`dsh`** in any project directory to start the coding agent.
+[Quick start](#quick-start) · [Daily workflow](#daily-workflow) · [Screenshots](#screenshots) · [CLI reference](native/cli/README.md) · [Report an issue](https://github.com/Liohtml/deepseek-harness-cli/issues)
 
-```sh
-pnpm install
-pnpm run build
-./install.sh
-cd /path/to/project
-dsh
-```
+![DSH terminal demo showing the welcome screen, command completion, a sample conversation, tool details, and a permission prompt](docs/assets/cli/dsh-demo.gif)
 
-Set `DEEPSEEK_API_KEY` in your environment or project `.env`. Rust handles the terminal; the existing Node.js engine supplies tools and persisted sessions. Keep the built checkout after installation. See [native CLI installation and usage](native/cli/README.md) for PATH setup, `dsh --resume`, custom install prefixes, and runtime requirements. From this checkout, `pnpm dsh` also opens the terminal using the Node frontend. The upstream npm package does not include this fork's changes.
+*Recorded from the real `dsh --demo` interface. Messages and tool results are sample data; no model request is made. Prefer a still image? [Open the conversation screenshot](docs/assets/cli/conversation.png).*
 
-## Developer preview
+<a id="terminal-coding-agent"></a>
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+## Built for terminal work
 
-Review the [safety notice](SAFETY.md) before running the project.
+| Stay focused | Stay in control |
+|---|---|
+| **Streaming conversation** — follow answers as they arrive, with code blocks and a scrollable transcript. | **Visible tool activity** — inspect tool arguments, results, and failures with `Ctrl+T`. |
+| **A proper composer** — multiline input, Unicode, bracketed paste, and prompt history. | **Explicit approvals** — dedicated permission prompts; Enter rejects a request. |
+| **Commands within reach** — type `/`, select with arrow keys, and complete with Tab. | **Sessions you can resume** — use `/session` to get the current id and resume command. |
 
-## Run
+<a id="run"></a><a id="run-from-source"></a>
 
-### Run from `npm`
+<a id="quick-start"></a>
 
-Install `Node.js`, then run:
+## Quick start
 
-```sh
-npx @deepseek-ai/dsh web
-```
+You need **Rust 1.88+ with Cargo**, **Node.js `^22.19` or `>=24`**, and **pnpm** (the version is pinned in `package.json`). The shell installer supports Linux and macOS; see the [installation reference](native/cli/README.md) for Windows and custom paths.
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
-### Run from source
-
-To run from a repository checkout:
+Build and install this fork:
 
 ```sh
 git clone https://github.com/Liohtml/deepseek-harness-cli.git
 cd deepseek-harness-cli
 pnpm install
 pnpm run build
-pnpm dsh
+./install.sh
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+Open your project and start a session:
+
+```sh
+cd /path/to/your/project
+export DEEPSEEK_API_KEY='your-api-key'
+dsh
+```
+
+You can also put `DEEPSEEK_API_KEY` in your project's `.env`. Keep the built checkout: the installed executable uses its Node.js runtime. Add the install directory to your shell's PATH configuration for future terminals. The [installation reference](native/cli/README.md) covers runtime paths and selecting the right `dsh` when multiple versions are installed.
+
+**Want to explore the interface first?** After installation, run `dsh --demo` without an API key. Press `1` for the welcome screen, `2` for a sample conversation, `3` for a permission prompt, and Esc to exit.
+
+<a id="daily-workflow"></a>
+
+## Daily workflow
+
+```sh
+dsh                                      # Work in the current project
+dsh --cwd /path/to/project               # Open another project
+dsh --resume session-…                   # Continue a saved session
+dsh headless "Run tests and summarize failures"  # One task, then exit
+```
+
+Start with a concrete task:
+
+> Explain how this project is organized and where requests enter the system.
+
+> Find the cause of the failing tests, make a focused fix, and run the relevant checks.
+
+> Review my uncommitted changes for bugs and missing error handling.
+
+Use `/session` to find your resume command and `/exit` to close the session. Resume from the same project directory. For scripts and pipes, select `headless` explicitly; the interactive interface needs a real terminal.
+
+### Keyboard essentials
+
+| Key | What it does |
+|---|---|
+| Enter | Send a message or answer |
+| Alt+Enter / Ctrl+J | Add a newline |
+| ↑ / ↓ | Browse prompt history |
+| PgUp / PgDn | Scroll the conversation |
+| Ctrl+T | Expand or collapse tool details |
+| F1 / F2 | Open keyboard help / runtime diagnostics |
+| Ctrl+C | Stop the current turn; exit when idle |
+| Ctrl+D | Close the session |
+
+See the [complete terminal reference](native/cli/README.md) for commands, permissions, and input behavior.
+
+<a id="screenshots"></a>
+
+## Screenshots
+
+The images below come from the same offline demo as the GIF. Click an image to view it at full resolution.
+
+<details>
+<summary><strong>Welcome — your workspace, model, and next task</strong></summary>
+
+[![DSH welcome screen with workspace details, suggested tasks, and the message composer](docs/assets/cli/welcome.png)](docs/assets/cli/welcome.png)
+
+</details>
+
+<details>
+<summary><strong>Conversation — answers, code, and tool activity</strong></summary>
+
+[![DSH sample conversation with completed tools, a Rust code block, and a fixed message composer](docs/assets/cli/conversation.png)](docs/assets/cli/conversation.png)
+
+</details>
+
+<details>
+<summary><strong>Permissions — review a request before allowing it</strong></summary>
+
+[![DSH permission prompt with the requested command and an amber answer field](docs/assets/cli/approval.png)](docs/assets/cli/approval.png)
+
+</details>
+
+<a id="developer-preview"></a>
+
+## Developer preview
+
+This fork is in **developer preview**. Interfaces and compatibility may change. Read the [safety notice](SAFETY.md) before running an agent in your projects.
+
+The frontend is native Rust; running the agent still requires Node.js and the built checkout. The upstream npm package does not include this fork's terminal interface. For startup problems, open diagnostics with F2 and consult [build and runtime troubleshooting](native/cli/README.md).
+
+## Other interfaces
+
+<details>
+<summary>Use the Web UI or the Node.js frontend</summary>
+
+From this built checkout, `pnpm dsh` opens the plain Node.js terminal frontend; `pnpm dsh web` starts the Web UI without rebuilding. With the Rust executable installed, `dsh web` also forwards to the web profile.
+
+<a id="run-from-npm"></a>
+
+To try the upstream Web UI through npm:
+
+```sh
+npx @deepseek-ai/dsh web
+```
+
+It serves `http://127.0.0.1:3080` by default and opens a browser on local launch. SSH launches print the URL; your SSH client or editor handles port forwarding. Pass `--no-open` to suppress browser launch. See the [Web UI guide](docs/user/guide/index.md).
+
+</details>
 
 ## Community and support
 
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
+- **This CLI:** [bug reports and feature requests](https://github.com/Liohtml/deepseek-harness-cli/issues).
+- **Upstream harness:** [Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) and [Discord](https://discord.gg/4MrtZUhpxg).
+- **Plugins:** add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to help others discover your extension.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), the [development guide](docs/development.md), and the [native frontend guide](native/cli/README.md). Agents should read [AGENTS.md](AGENTS.md). README media can be regenerated with the [capture script](native/cli/tools/capture_demo.py).
 
-## Development
+<a id="development"></a>
 
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
+## Built on DeepSeek Harness
 
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
+[DeepSeek AI](https://deepseek.com) develops the upstream harness. Its **everything-is-a-plugin** architecture is powered by [Cordis](https://github.com/cordiverse/cordis), described in [*A Programming Paradigm for Spatiotemporal Composability*](https://arxiv.org/abs/2608.25512). Explore the [architecture](docs/architecture.md) and [upstream documentation](https://deepseek-harness.github.io/deepseek-harness/) for the underlying engine.
 
-For agents, follow [AGENTS.md](AGENTS.md).
+<a id="citation"></a>
 
-## Citation
+<details>
+<summary>Cite the upstream project</summary>
 
 ```bibtex
 @misc{deepseek-harness2026,
@@ -84,8 +178,8 @@ For agents, follow [AGENTS.md](AGENTS.md).
 }
 ```
 
+</details>
+
 ## License
 
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licenses.
