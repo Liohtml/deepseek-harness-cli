@@ -1,4 +1,4 @@
-# DeepSeek Harness
+# DeepSeek Harness CLI
 
 [English](README.md) | 中文
 
@@ -7,6 +7,20 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
 
 文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+
+## 终端编程 Agent
+
+此分支提供 Rust 终端前端。安装后，在任意项目目录运行 **`dsh`** 即可启动编程 Agent。
+
+```sh
+pnpm install
+pnpm run build
+./install.sh
+cd /path/to/project
+dsh
+```
+
+在环境或项目 `.env` 中设置 `DEEPSEEK_API_KEY`。Rust 处理终端，现有 Node.js 引擎提供工具和持久化会话。安装后请保留构建后的仓库。PATH 设置、`dsh --resume`、自定义安装位置和运行时要求见[原生 CLI 安装与使用](native/cli/README.zh.md)。在本仓库中，`pnpm dsh` 也可通过 Node 前端打开终端。上游 npm 包不包含此分支的修改。
 
 ## 开发者预览
 
@@ -35,11 +49,11 @@ npx @deepseek-ai/dsh web
 如需从仓库源码运行：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone https://github.com/Liohtml/deepseek-harness-cli.git
+cd deepseek-harness-cli
 pnpm install
 pnpm run build
-pnpm dsh web
+pnpm dsh
 ```
 
 `pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。

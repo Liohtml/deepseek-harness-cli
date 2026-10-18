@@ -6,21 +6,22 @@ const parse = (argv: string[], manageDesktopProfile = false) => parseDshArgs(arg
 /** Capture the process exit code while muting Commander's output. */
 function exitCode(argv: string[], manageDesktopProfile = false): number {
   const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit') })
-  vi.spyOn(process.stdout, 'write').mockReturnValue(true)
-  vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+  if (!vi.isMockFunction(process.stdout.write)) vi.spyOn(process.stdout, 'write').mockReturnValue(true)
+  if (!vi.isMockFunction(process.stderr.write)) vi.spyOn(process.stderr, 'write').mockReturnValue(true)
   try {
     parse(argv, manageDesktopProfile)
     throw new Error(`expected ${JSON.stringify(argv)} to exit`)
   } catch {
     return exit.mock.calls.at(-1)?.[0] as number
-  } finally {
-    vi.restoreAllMocks()
   }
 }
 
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('parseDshArgs', () => {
+  it('starts the interactive coding agent without arguments', () => {
+    expect(parse([])).toEqual({ mode: 'profile', profile: 'headless', patches: [], args: ['--interactive'] })
+  })
   it('routes profile boots and shorthand, handing the rest to the app', () => {
     expect(parse(['--profile', 'tui'])).toEqual({ mode: 'profile', profile: 'tui', patches: [], args: [] })
     expect(parse(['--profile', 'tui', '--patch', 'a.yml', '--patch', 'b.yml']))
@@ -215,7 +216,6 @@ describe('parseDshArgs', () => {
   })
 
   it('rejects missing profile, removed flags, and contradictory inputs', () => {
-    expect(exitCode([])).toBe(1)
     expect(exitCode(['--config', 'c.yml'])).toBe(1) // removed
     expect(exitCode(['-p', 'task'])).toBe(1) // removed
     expect(exitCode(['--profile', ''])).toBe(1)

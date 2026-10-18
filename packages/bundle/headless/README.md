@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-headless` runs one dsh task from the command line and prints the final answer, then exits — no GUI, no server, no browser. Type `dsh --profile headless "run the tests"` and the agent handles it with the same model, tools, and safety defaults as every other surface. It suits scripts, CI, and one-off jobs: it opens no ports and leaves nothing running behind. It also offers a JSON event stream (`--json`) and `--session-id` to resume a conversation. Exit code 0 means the task completed; 1 means it aborted or errored. The boundary: one task per invocation, no interactive follow-up.
+`dsh-headless` runs one dsh task from the command line and prints the final answer, then exits — no GUI, no server, no browser. Type `dsh --profile headless "run the tests"` and the agent handles it with the same model, tools, and safety defaults as every other surface. It suits scripts, CI, and one-off jobs: it opens no ports and leaves nothing running behind. It also offers a JSON event stream (`--json`) and `--session-id` to resume a conversation. Exit code 0 means the task completed; 1 means it aborted or errored. Use `--interactive` for a terminal conversation with follow-up prompts.
 
 ## Table of Contents
 
@@ -39,15 +39,43 @@ The agent works through the task, streams each non-empty provider reasoning delt
 { echo "Summarize these changes:"; git diff --stat; } | dsh --profile headless
 ```
 
-The task and run options are supplied through three settings:
+The task and run options are supplied through these settings:
 
 | Field | Default | Meaning |
 |---|---|---|
 | `task` | stdin | The task text; stdin supplies it when omitted or `-` |
 | `sessionId` | `session-<uuid>` | Exact Session identity to adopt; an unknown id fails |
 | `json` | `false` | Project the run as newline-delimited events on stdout |
+| `interactive` | `false` | Accept terminal prompts until EOF or `/exit` |
+| `terminalBridge` | `false` | JSON stdio transport for the native frontend; requires `interactive` |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-headless) is the exhaustive source for every accepted field and its JSDoc.
+
+<a id="interactive-terminal"></a>
+### Interactive terminal
+
+```sh
+pnpm dsh headless --interactive
+pnpm dsh headless --interactive "Inspect this project's test failures"
+pnpm dsh headless --interactive --session-id session-…
+```
+
+Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, credentials, and persisted Sessions as one-shot tasks. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; reasoning and partial token deltas are not displayed.
+
+| Input | Action |
+|---|---|
+| `/help` | Show terminal commands |
+| `/session` | Print the current id and resume command |
+| `/multiline` | Compose literal text over several lines; a single `.` submits it |
+| `/exit`, `/quit`, or Ctrl+D | End the conversation |
+| Ctrl+C during a turn | Cancel the current turn and return to the prompt |
+| Ctrl+C at the prompt | Exit |
+
+Approval prompts accept only `y` or `yes` as a one-time grant; Enter rejects. Agent questions accept an option number or free text, and multi-select questions also accept comma-separated numbers. Cancelled prompts never grant approval. Normal exit returns 0, even after a cancelled or failed turn; unexpected driver or persistence failures stop the process with exit code 1. Use one-shot mode when scripts need the task outcome as an exit code.
+
+The terminal answers root-agent requests only. Timed questions retain their existing timeout; late answers, session browsing, model switching, and subagent interaction are not available in this terminal mode. Resume uses the same cwd and preset restrictions as one-shot adoption.
+
+`dsh` without arguments selects interactive mode. The [Rust frontend](../../../native/cli/README.md) uses `--terminal-bridge` to separate terminal input from the Agent process. This option requires dedicated JSON stdio and rejects `--interactive`, `--json`, and task text. Version 1 sends `hello`, `output`, `prompt`, `cancel`, `close`, and `error` frames; the client sends `answer` with the active prompt id, `interrupt`, or `close`. EOF cancels the current turn.
 
 <a id="credentials"></a>
 ### Credentials
@@ -79,7 +107,7 @@ Every invocation defaults to a fresh `session-<uuid>` identity, which `--json` r
 
 ### When to use it
 
-Use headless for scripted or automated dsh runs — CI steps, batch jobs, quick answers from a terminal. Avoid it when you need a multi-turn interactive session or a GUI; the browser surface ([dsh-web-app](../web-app/README.md)) serves that. The process stays alive only for the run, opens no listening port, and exits on its own, so it fits pipelines that wait on the process. When a supervisor needs progress rather than just the answer, `--json` gives it the event stream and `--session-id` lets a later invocation continue the same conversation.
+Use headless for scripted or automated dsh runs — CI steps, batch jobs, quick answers from a terminal. Use `--interactive` for multi-turn terminal work, or the browser surface ([dsh-web-app](../web-app/README.md)) for a GUI. The process stays alive only for the run, opens no listening port, and exits on its own, so it fits pipelines that wait on the process. When a supervisor needs progress rather than just the answer, `--json` gives it the event stream and `--session-id` lets a later invocation continue the same conversation.
 
 ### Help and task errors
 
@@ -101,7 +129,7 @@ The runner awaits the complete application (`ctx.get('loader')?.await()`) so the
 
 ### Patch surface over base
 
-The patch rides over `dsh-base`: it inherits the projection cache and shared PTC runtime, sets the coding persona prefix and separate cwd suffix on the base `system-prompt` row, keeps the same temporary process-wide PTC mode opt-in (`DSH_TOOLS_MODE`) as the Web surface, disables the shared HMR row, and mounts the startup provider and the runner. The cache checkpoints each persisted one-shot session for later consumers; its durability barrier flushes each covered log prefix before publishing the cache row and may split otherwise coalesced JSONL runs. The startup provider ([`src/startup.ts`](src/startup.ts)) injects `ctx.cmdlineArgs` ([`dsh-cmdline`](../../boot/cmdline/README.md)), reads the positional argument and the `--session-id`/`--json` options, prints the app's `--help`, and provides `headlessStartup`; the runner injects that service and reads its task and run options from lazy config.
+The patch rides over `dsh-base`: it inherits the projection cache and shared PTC runtime, sets the coding persona prefix and separate cwd suffix on the base `system-prompt` row, keeps the same temporary process-wide PTC mode opt-in (`DSH_TOOLS_MODE`) as the Web surface, disables the shared HMR row, and mounts the startup provider and the runner. The cache checkpoints each persisted one-shot session for later consumers; its durability barrier flushes each covered log prefix before publishing the cache row and may split otherwise coalesced JSONL runs. The startup provider ([`src/startup.ts`](src/startup.ts)) injects `ctx.cmdlineArgs` ([`dsh-cmdline`](../../boot/cmdline/README.md)), reads the positional argument and the `--session-id`/`--json`/`--interactive` options, prints the app's `--help`, and provides `headlessStartup`; the runner injects that service and reads its task and run options from lazy config.
 
 ### Exit mapping
 
@@ -143,7 +171,7 @@ None, as the runner submits the task as an ordinary user message and the compose
 
 #### KV Cache effect
 
-The runner adds nothing to the request prefix; it only drives one user message through the composed tree.
+The runner adds nothing to the request prefix; it drives ordinary user messages through the composed tree.
 
 ## Known Limitations and Deferred Work
 
@@ -152,7 +180,7 @@ The runner adds nothing to the request prefix; it only drives one user message t
 
 These limits tell you when headless does not fit and what it needs from the `dsh` launcher. They are current package constraints, not a general CLI comparison or a task backlog.
 
-- **One task per run** — after the task is answered the process exits; there is no interactive follow-up, so split multi-step work into separate runs.
+- **Terminal mode is line-oriented** — `--interactive` supports follow-ups, but has no full-screen editor or session browser.
 - **Final background-job settlement may be absent from persisted history** — process teardown can end Session routing or close its writer before an owned job settles, including normal completion and signal shutdown; the [job lifecycle contract](../../../docs/subsystems/jobs.md#session-lifecycle-records) defines how consumers retain incomplete intervals.
 - **Runs through the `dsh` launcher** — starting the headless profile another way fails at startup, because only the launcher can request the process exit.
 - **No pre-token heartbeat** — in default mode stderr stays silent until the provider emits a non-empty reasoning delta; a delayed first token exposes no earlier progress signal.

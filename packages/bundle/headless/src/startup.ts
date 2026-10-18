@@ -1,6 +1,6 @@
 /**
  * The one-shot app's command-line provider: it parses the task positional,
- * `--session-id`, `--json`, and `--help`, then publishes
+ * `--session-id`, `--json`, `--interactive`, and `--help`, then publishes
  * {@link HEADLESS_STARTUP_SERVICE}. The runner is an ordinary consumer whose
  * lazy config waits for that service.
  * @module @deepseek-ai/dsh-headless/startup
@@ -29,6 +29,10 @@ export interface HeadlessStartupValues {
   sessionId: string | undefined
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json: boolean
+  /** Keep accepting follow-up prompts from a terminal. */
+  interactive?: boolean
+  /** Use the versioned stdio transport for the native terminal frontend. */
+  terminalBridge?: boolean
 }
 
 /**
@@ -38,13 +42,16 @@ export interface HeadlessStartupValues {
 function headlessCommand(): Command {
   return new Command()
     .name('dsh --profile headless')
-    .description('Answer one task and exit; the answer goes to stdout and diagnostics to stderr.')
+    .description('Answer one task and exit; the answer goes to stdout and diagnostics to stderr. Use --interactive for a terminal conversation.')
     .helpOption('-h, --help', 'show this help')
     .option('--json', 'write newline-delimited run events to stdout instead of the final message')
+    .option('-i, --interactive', 'chat in the terminal with persisted follow-up turns')
+    .option('--terminal-bridge', 'serve the native terminal frontend over JSON stdio')
     .option('--session-id <id>', 'adopt the persisted Session with this id; an unknown id is an error')
     .argument('[task...]', 'the task text; multiple words are joined by spaces, and `-` reads stdin')
     .addHelpText('after', `
 Examples:
+  dsh headless --interactive                    start an interactive coding session
   dsh --profile headless "run the tests"          answer one task and exit
   echo "run the tests" | dsh --profile headless   read the task from stdin
   dsh --profile headless --json "run the tests"   emit machine-readable run events
@@ -101,10 +108,19 @@ export function apply(ctx: Context): void {
       program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
     }
     const task = program.args.length === 0 ? undefined : joined
-    if (task === undefined && internals.stdinIsTty()) {
+    const options = program.opts<{ json?: boolean; sessionId?: string; interactive?: boolean; terminalBridge?: boolean }>()
+    if (options.terminalBridge && (options.interactive || options.json || task !== undefined)) {
+      program.error('error: --terminal-bridge cannot be combined with --interactive, --json, or a task')
+    }
+    if (options.interactive && (!internals.stdinIsTty() || task === '-')) {
+      program.error('error: --interactive requires terminal stdin; omit it for piped tasks')
+    }
+    if (options.interactive && options.json) {
+      program.error('error: --interactive and --json cannot be combined')
+    }
+    if (task === undefined && internals.stdinIsTty() && !options.interactive && !options.terminalBridge) {
       program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
     }
-    const options = program.opts<{ json?: boolean; sessionId?: string }>()
     // A SessionId is opaque, so whitespace is part of the identity: validate
     // emptiness on the trimmed value but hand the runner the exact string.
     const sessionId = options.sessionId
@@ -115,6 +131,8 @@ export function apply(ctx: Context): void {
       task,
       sessionId,
       json: options.json === true,
+      ...(options.interactive ? { interactive: true } : {}),
+      ...(options.terminalBridge ? { interactive: true, terminalBridge: true } : {}),
     } satisfies HeadlessStartupValues)
   })
   parseCmdline(ctx, program)

@@ -89,6 +89,7 @@ function rejectElectronProfile(program: Command, profile: string): void {
 /** The launcher's own help text; each app prints its own. */
 const HELP_EXAMPLES = `
 Examples:
+  dsh                                       start a terminal coding session in the current directory
   dsh web                                   boot the web profile (same as: dsh --profile web)
   dsh rescue --from-default-profile web
                                             recreate rescue from the shipped web template, then boot it
@@ -144,6 +145,7 @@ function resolveBoot(program: Command, profile: string, options: BootOptions, ar
  * @returns the resolved invocation.
  */
 export function parseDshArgs(argv: readonly string[], version: string, manageDesktopProfile = false): DshInvocation {
+  if (argv.length === 0) return { mode: 'profile', profile: 'headless', patches: [], args: ['--interactive'] }
   const first = argv[0]
   let resolved: DshInvocation | undefined
   // Annotated, not inferred: the actions below call back into `program`, and an

@@ -75,6 +75,7 @@ export const apply = ctx => globalThis.__headlessStartupApply(ctx)
     '    task: !!js ctx.headlessStartup.task',
     '    sessionId: !!js ctx.headlessStartup.sessionId',
     '    json: !!js ctx.headlessStartup.json',
+    '    interactive: !!js ctx.headlessStartup.interactive',
     '- id: headless-startup',
     `  name: ${pathToFileURL(join(dir, 'startup.mjs')).href}`,
     '',
@@ -114,6 +115,23 @@ export const apply = ctx => globalThis.__headlessStartupApply(ctx)
 }
 
 describe('headless command-line provider', () => {
+  it('starts an interactive conversation without a task', async () => {
+    const { task, observed } = await bootStartup(['--interactive'], { stdinIsTty: true })
+    expect(task).toMatchObject({ interactive: true, json: false })
+    expect(observed.runnerConfig).toMatchObject({ interactive: true })
+    expect(observed.exits).toEqual([])
+  })
+
+  it.each([
+    { args: ['--interactive'], stdinIsTty: false },
+    { args: ['--interactive', '--json'], stdinIsTty: true },
+    { args: ['--interactive', '-'], stdinIsTty: true },
+  ])('rejects incompatible interactive input: $args', async ({ args, stdinIsTty }) => {
+    const { task, observed } = await bootStartup(args, { stdinIsTty })
+    expect(task).toBeUndefined()
+    expect(observed.exits).toEqual([1])
+  })
+
   it('joins the task positional into the runner config', async () => {
     const { task, observed } = await bootStartup(['run', 'the', 'tests'])
     expect(task).toEqual({ task: 'run the tests', sessionId: undefined, json: false })
@@ -228,6 +246,17 @@ describe('headless command-line provider', () => {
 
   it('fails loud without the launcher command line and exit request', () => {
     expect(() => { apply(new Context()) }).toThrow('the launcher must provide ctx.cmdlineArgs and ctx.appExit')
+  })
+
+  it('selects the native terminal transport with piped stdin', async () => {
+    const { task } = await bootStartup(['--terminal-bridge'], { stdinIsTty: false })
+    expect(task).toEqual({ task: undefined, sessionId: undefined, json: false, interactive: true, terminalBridge: true })
+  })
+
+  it.each([['--interactive'], ['--json'], ['task']])('rejects incompatible native transport arguments %j', async (...args) => {
+    const { task, observed } = await bootStartup(['--terminal-bridge', ...args])
+    expect(task).toBeUndefined()
+    expect(observed.exits).toEqual([1])
   })
 
   it('prints its own help and leaves the runner pending', async () => {

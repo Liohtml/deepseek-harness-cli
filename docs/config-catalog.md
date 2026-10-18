@@ -1435,17 +1435,21 @@ export interface Config {
 ## `@deepseek-ai/dsh-headless`
 
 - `inject`: `agentDefaultModel` · `agents` · `sessions`
-- `source`: [`packages/bundle/headless/src/index.ts:43`](../packages/bundle/headless/src/index.ts)
+- `source`: [`packages/bundle/headless/src/index.ts:46`](../packages/bundle/headless/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the task and run options resolved from this app's injected provider service. */
 export interface Config {
-  /** The prompt text for the single run; absent when the task arrives on stdin. */
+  /** Initial prompt text; absent reads stdin in one-shot mode or opens the interactive prompt. */
   task?: string
   /** Exact Session identity to adopt; absent for a fresh random identity. An id with no stored Session fails. */
   sessionId?: string
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json?: boolean
+  /** Accept follow-up prompts from a terminal until /exit or EOF. Incompatible with json. */
+  interactive?: boolean
+  /** Native terminal stdio transport; requires interactive and excludes task/json. */
+  terminalBridge?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-headless -->

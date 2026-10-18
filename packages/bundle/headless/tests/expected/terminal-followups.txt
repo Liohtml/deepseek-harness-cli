@@ -1,0 +1,12 @@
+
+DSH · terminal coding agent
+Workspace: <cwd>
+Session: <session>
+/help  commands   /session  resume id   /multiline  enter a block   /exit  quit
+Ctrl+C stops a running turn; at the prompt it exits. End a multiline prompt with a single dot.
+
+
+First answer.
+
+
+Second answer.

@@ -40,6 +40,12 @@
     },
     {
       "path": "../../subagent/subagent"
+    },
+    {
+      "path": "../../interaction/user-approval"
+    },
+    {
+      "path": "../../interaction/user-questions"
     }
   ]
 }

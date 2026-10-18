@@ -28,6 +28,8 @@
         task: !!js ctx.headlessStartup.task
         sessionId: !!js ctx.headlessStartup.sessionId
         json: !!js ctx.headlessStartup.json
+        interactive: !!js ctx.headlessStartup.interactive
+        terminalBridge: !!js ctx.headlessStartup.terminalBridge
 
 - id: hmr
   disabled: true

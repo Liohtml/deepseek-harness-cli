@@ -1,0 +1,24 @@
+[package]
+name = "deepseek-harness-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Native terminal frontend for the DeepSeek Harness coding agent"
+license = "MIT"
+repository = "https://github.com/Liohtml/deepseek-harness-cli"
+publish = false
+
+[[bin]]
+name = "dsh"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-width = "0.2"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

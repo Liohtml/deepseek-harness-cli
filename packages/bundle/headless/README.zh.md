@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-`dsh-headless` 从命令行运行一个 dsh 任务并打印最终答案，然后退出——没有 GUI、没有服务器、没有浏览器。输入 `dsh --profile headless "run the tests"`，agent（智能体）会以与所有其他表层相同的模型、工具与安全默认值完成该任务。它非常适合脚本、CI 与一次性任务：进程不打开任何端口，也不会留下任何后台运行的东西。监督进程还可以通过按行 JSON 事件流（`--json`）驱动它，并用该事件流报告的标识（`--session-id`）在同一段对话上继续唤醒。退出码告诉你结果——任务完成时为 0，中止或出错时为 1。主要边界：每次调用只运行一个任务，没有交互式后续。
+`dsh-headless` 从命令行运行一个 dsh 任务并打印最终答案，然后退出——没有 GUI、没有服务器、没有浏览器。输入 `dsh --profile headless "run the tests"`，agent（智能体）会以与所有其他表层相同的模型、工具与安全默认值完成该任务。它非常适合脚本、CI 与一次性任务：进程不打开任何端口，也不会留下任何后台运行的东西。监督进程还可以通过按行 JSON 事件流（`--json`）驱动它，并用该事件流报告的标识（`--session-id`）在同一段对话上继续唤醒。退出码告诉你结果——任务完成时为 0，中止或出错时为 1。使用 `--interactive` 可在终端进行多轮对话。
 
 ## 目录
 
@@ -39,15 +39,43 @@ agent 会完成该任务，把提供方的每个非空推理（reasoning）增�
 { echo "Summarize these changes:"; git diff --stat; } | dsh --profile headless
 ```
 
-任务与运行选项通过三个设置提供：
+任务与运行选项通过以下设置提供：
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `task` | stdin | 任务文本；省略或传 `-` 时由 stdin 提供 |
 | `sessionId` | `session-<uuid>` | 要沿用的精确 Session 标识；未知 id 会失败 |
 | `json` | `false` | 把本次运行投影为 stdout 上的按行 JSON 事件 |
+| `interactive` | `false` | 接受终端提示，直到 EOF 或 `/exit` |
+| `terminalBridge` | `false` | 原生前端的 JSON stdio 传输；要求 `interactive` |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-headless)是所有受支持字段及其 JSDoc 的完整真源。
+
+<a id="interactive-terminal"></a>
+### 交互式终端
+
+```sh
+pnpm dsh headless --interactive
+pnpm dsh headless --interactive "Inspect this project's test failures"
+pnpm dsh headless --interactive --session-id session-…
+```
+
+从项目目录启动；仓库源码命令使用该目录作为工作区。交互模式要求 stdin 和 stdout 均为终端，并拒绝 `--json` 和 stdin 标记 `-`。模型、文件工具、沙箱、凭据和持久化 Session 与一次性任务相同。每轮在接受下一个提示之前刷新到持久存储。agent 工作时显示已提交的助手消息、工具名称和参数；不显示推理和未完成的 token 增量。
+
+| 输入 | 操作 |
+|---|---|
+| `/help` | 显示终端命令 |
+| `/session` | 打印当前 id 和恢复命令 |
+| `/multiline` | 输入多行原始文本；单独的 `.` 提交 |
+| `/exit`、`/quit` 或 Ctrl+D | 结束对话 |
+| 运行中按 Ctrl+C | 取消当前轮并返回提示符 |
+| 提示符处按 Ctrl+C | 退出 |
+
+批准提示仅接受 `y` 或 `yes` 作为一次性授权；直接回车拒绝。agent 问题接受选项编号或自由文本，多选题还接受逗号分隔的编号。取消提示不会授予批准。正常退出返回 0，即使此前某轮被取消或失败；意外的驱动或持久化失败终止进程并返回 1。脚本需要任务结果作为退出码时，使用一次性模式。
+
+终端只回答根 agent 的请求。限时问题保留现有超时；此终端模式不支持超时后的答复、会话浏览、模型切换和子 agent 交互。恢复会话遵循与一次性模式相同的 cwd 和预设限制。
+
+`dsh` 无参数时启动交互模式。[Rust 前端](../../../native/cli/README.zh.md) 通过 `--terminal-bridge` 将终端输入与 Agent 进程分离。此选项要求专用 JSON stdio，不能与 `--interactive`、`--json` 或任务文本组合。版本 1 使用 `hello`、`output`、`prompt`、`cancel`、`close` 和 `error` 帧；客户端发送 `answer`（含当前提示 id）、`interrupt` 或 `close`。EOF 会取消当前轮次。
 
 <a id="credentials"></a>
 ### 凭据
@@ -79,7 +107,7 @@ agent 会完成该任务，把提供方的每个非空推理（reasoning）增�
 
 ### 何时使用
 
-在脚本化或自动化的 dsh 运行中使用 headless——CI 步骤、批处理任务、从终端快速获取答案。当需要多轮交互会话或 GUI 时请避免它；浏览器表层（[dsh-web-app](../web-app/README.zh.md)）负责这类场景。进程只为本次运行而存活，不打开监听端口，并且自行退出，因此适合等待进程结束的流水线。当监督进程需要进度而不只是答案时，`--json` 提供事件流，`--session-id` 则让后续调用继续同一段对话。
+在脚本化或自动化的 dsh 运行中使用 headless——CI 步骤、批处理任务、从终端快速获取答案。多轮终端工作使用 `--interactive`；需要 GUI 时使用浏览器表层（[dsh-web-app](../web-app/README.zh.md)）。进程只为本次运行而存活，不打开监听端口，并且自行退出，因此适合等待进程结束的流水线。当监督进程需要进度而不只是答案时，`--json` 提供事件流，`--session-id` 则让后续调用继续同一段对话。
 
 ### 帮助与任务错误
 
@@ -101,7 +129,7 @@ runner 等待整个应用结算（`ctx.get('loader')?.await()`），确保已组
 
 ### 基于 base 的 patch 内容
 
-patch 叠加在 `dsh-base` 之上：继承投影缓存与共享 PTC 运行时，在基础 `system-prompt` 行上设置编码 persona 前缀与独立的 cwd 后缀，保留与 Web 表层相同的临时进程级 PTC mode 开关（`DSH_TOOLS_MODE`），禁用共享的 HMR（热模块替换）行，并挂载启动提供方与 runner。缓存为每个已持久化的一次性会话写入检查点，供后续消费方使用；其持久性屏障会在发布缓存行前 flush 所覆盖的日志前缀，因此可能拆分原本会合并的 JSONL 连续段。启动提供方（[`src/startup.ts`](src/startup.ts)）注入 `ctx.cmdlineArgs`（[`dsh-cmdline`](../../boot/cmdline/README.zh.md)），读取位置参数与 `--session-id`/`--json` 选项、打印应用自己的 `--help`，并提供 `headlessStartup`；runner 注入该服务，再从惰性配置中读取任务与运行选项。
+patch 叠加在 `dsh-base` 之上：继承投影缓存与共享 PTC 运行时，在基础 `system-prompt` 行上设置编码 persona 前缀与独立的 cwd 后缀，保留与 Web 表层相同的临时进程级 PTC mode 开关（`DSH_TOOLS_MODE`），禁用共享的 HMR（热模块替换）行，并挂载启动提供方与 runner。缓存为每个已持久化的一次性会话写入检查点，供后续消费方使用；其持久性屏障会在发布缓存行前 flush 所覆盖的日志前缀，因此可能拆分原本会合并的 JSONL 连续段。启动提供方（[`src/startup.ts`](src/startup.ts)）注入 `ctx.cmdlineArgs`（[`dsh-cmdline`](../../boot/cmdline/README.zh.md)），读取位置参数与 `--session-id`/`--json`/`--interactive` 选项、打印应用自己的 `--help`，并提供 `headlessStartup`；runner 注入该服务，再从惰性配置中读取任务与运行选项。
 
 ### 退出映射
 
@@ -152,7 +180,7 @@ runner 不向请求前缀添加任何内容；它只是驱动组合出的配置�
 
 这些限制告诉你 headless 何时不适用、它需要 `dsh` 启动器提供什么。它们是当前包约束，不是通用的 CLI（命令行界面）对比或任务积压。
 
-- **每次运行一个任务**——任务得到回答后进程即退出；没有交互式后续，因此多步工作请拆成多次运行。
+- **终端模式按行输入**——`--interactive` 支持后续对话，但没有全屏编辑器或会话浏览器。
 - **持久化历史可能缺少后台 job 的最后一条结算**——进程销毁可能在有主 job 结算前停止 Session 路由或关闭写句柄，正常结束和信号关停也可能如此；[job 生命周期约定](../../../docs/subsystems/jobs.zh.md#session-lifecycle-records)说明消费方如何保留不完整区间。
 - **通过 `dsh` 启动器运行**——以其他方式启动 headless profile 会在启动时失败，因为只有启动器能请求进程退出。
 - **首个 token 前没有心跳**——默认模式下，提供方发出第一个非空推理增量前，stderr 保持静默；延迟首个 token 的提供方不会更早给出进度信号。

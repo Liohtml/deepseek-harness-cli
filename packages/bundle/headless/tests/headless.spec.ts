@@ -22,9 +22,11 @@ import { createInboxStub, provideWorkingDirectoryFixture } from '@deepseek-ai/ds
 import { apply, Config } from '../src/index.ts'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import { internals } from '../src/runner-internals.ts'
+import { terminalInternals } from '../src/terminal.ts'
 
 const originalInternals = { ...internals }
-afterEach(() => { Object.assign(internals, originalInternals) })
+const originalTerminal = { ...terminalInternals }
+afterEach(() => { Object.assign(internals, originalInternals); Object.assign(terminalInternals, originalTerminal) })
 
 interface Script {
   before?(session: Session): void
@@ -47,6 +49,8 @@ interface BenchOptions {
   readStdin?: () => Promise<string>
   sessionId?: string
   json?: boolean
+  interactive?: boolean
+  onCancel?: () => void
   observe?: () => Promise<ObservationStub>
   /** Leave the query service unmounted to exercise the fail-loud path. */
   omitSessionQuery?: boolean
@@ -155,7 +159,7 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
       inbox,
       get status() { return running ? 'running' : 'idle' },
       ctx: ownerCtx,
-      cancel: () => {},
+      cancel: () => { options.onCancel?.() },
       runMaintenance: () => Promise.reject(new Error('not used')),
       send: () => {},
       followup: (message: UserMessage) => {
@@ -225,6 +229,7 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
         ...options.useStdin === true ? {} : { task: options.task ?? 'do the thing' },
         ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
         ...options.json === undefined ? {} : { json: options.json },
+        ...options.interactive === undefined ? {} : { interactive: options.interactive },
       })
       return { code: await exited, out, err, order }
     },
@@ -232,6 +237,108 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
 }
 
 describe('headless runner', () => {
+  it('answers root approvals and questions, delegates other agents, and removes answerers on exit', async () => {
+    const prompts = ['yes', '', '2', '1,2', '/exit']
+    terminalInternals.isTTY = () => true
+    terminalInternals.write = () => {}
+    terminalInternals.open = () => ({ closed: false, close: () => {}, ask: async () => prompts.shift() })
+    let root: Agent | undefined
+    const test = await bench({
+      async afterPrompt(session, message, agent) {
+        root = agent
+        const approve = () => test.ctx.waterfall('approval/request', { agent, toolName: 'bash' }, async () => 'unavailable' as const)
+        expect(await approve()).toBe('allowed-once')
+        expect(await approve()).toBe('rejected')
+        expect(await test.ctx.waterfall('approval/request', { agent: { ...agent }, toolName: 'bash' }, async () => 'unavailable' as const)).toBe('unavailable')
+        const answer = await test.ctx.waterfall('user-questions/request', {
+          agent,
+          questions: [
+            { id: 'choice', question: 'Which?', options: [{ label: 'A' }, { label: 'B' }] },
+            { id: 'multiple', question: 'Which ones?', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] },
+          ],
+        }, async () => ({ answers: [] }))
+        expect(answer).toEqual({ answers: [{ id: 'choice', selected: ['B'] }, { id: 'multiple', selected: ['A', 'B'] }] })
+        appendTurn(session, 1, message, 'done', true)
+      },
+    }, { interactive: true })
+    try {
+      expect(await test.run()).toMatchObject({ code: 0 })
+      expect(root).toBeDefined()
+      expect(await test.ctx.waterfall('approval/request', { agent: root!, toolName: 'bash' }, async () => 'unavailable' as const)).toBe('unavailable')
+      expect(prompts).toEqual([])
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('cancels the active turn on Ctrl+C and returns to the prompt', async () => {
+    let interrupt = () => {}
+    let cancelled = false
+    let asked = false
+    terminalInternals.isTTY = () => true
+    terminalInternals.write = () => {}
+    terminalInternals.open = onInterrupt => {
+      interrupt = onInterrupt
+      return { closed: false, close: () => {}, ask: async () => { asked = true; return '/exit' } }
+    }
+    const test = await bench({
+      afterPrompt(session, message) {
+        interrupt()
+        expect(cancelled).toBe(true)
+        appendTurn(session, 1, message, undefined, false)
+      },
+    }, { interactive: true, onCancel: () => { cancelled = true } })
+    try {
+      expect(await test.run()).toMatchObject({ code: 0 })
+      expect(asked).toBe(true)
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('closes terminal input and fails instead of accepting prompts after a driver failure', async () => {
+    let closed = false
+    terminalInternals.isTTY = () => true
+    terminalInternals.write = () => {}
+    terminalInternals.open = () => ({
+      closed: false, close: () => { closed = true },
+      ask: async () => { throw new Error('must not ask after failure') },
+    })
+    const test = await bench({ afterPrompt: () => { throw new Error('lost session writer') } }, { interactive: true })
+    try {
+      expect(await test.run()).toMatchObject({ code: 1, err: 'dsh: lost session writer\n' })
+      expect(closed).toBe(true)
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('keeps one Session across follow-ups and flushes each turn before the next prompt', async () => {
+    let transcript = ''
+    let closed = false
+    const prompts = ['second task', '/exit']
+    terminalInternals.isTTY = () => true
+    terminalInternals.write = text => { transcript += text }
+    terminalInternals.open = () => ({
+      get closed() { return closed },
+      close: () => { closed = true },
+      ask: async () => {
+        expect(test.output().order.filter(item => item === 'flush')).toHaveLength(turns)
+        return prompts.shift()
+      },
+    })
+    const identities = new Set<string>()
+    let turns = 0
+    const test = await bench({
+      afterPrompt(session, message) {
+        identities.add(session.id)
+        appendTurn(session, ++turns, message, `Answer ${turns}`, true)
+      },
+    }, { interactive: true, task: 'first task' })
+    try {
+      const result = await test.run()
+      expect(result).toMatchObject({ code: 0, out: '', order: ['flush', 'flush', 'exit'] })
+      expect(identities.size).toBe(1)
+      expect(transcript).toContain('Answer 1')
+      expect(transcript).toContain('Answer 2')
+      expect(closed).toBe(true)
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
   it('waits for parent awakened between idle and child observation', async () => {
     const cleanup = Promise.withResolvers<undefined>()
     const cleaning = Promise.withResolvers<undefined>()

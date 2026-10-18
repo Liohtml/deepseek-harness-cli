@@ -1,4 +1,4 @@
-# DeepSeek Harness
+# DeepSeek Harness CLI
 
 English | [中文](README.zh.md)
 
@@ -7,6 +7,20 @@ DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek 
 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
 
 Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+
+## Terminal coding agent
+
+This fork provides a Rust terminal frontend. After installing, run **`dsh`** in any project directory to start the coding agent.
+
+```sh
+pnpm install
+pnpm run build
+./install.sh
+cd /path/to/project
+dsh
+```
+
+Set `DEEPSEEK_API_KEY` in your environment or project `.env`. Rust handles the terminal; the existing Node.js engine supplies tools and persisted sessions. Keep the built checkout after installation. See [native CLI installation and usage](native/cli/README.md) for PATH setup, `dsh --resume`, custom install prefixes, and runtime requirements. From this checkout, `pnpm dsh` also opens the terminal using the Node frontend. The upstream npm package does not include this fork's changes.
 
 ## Developer preview
 
@@ -31,11 +45,11 @@ The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it
 To run from a repository checkout:
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone https://github.com/Liohtml/deepseek-harness-cli.git
+cd deepseek-harness-cli
 pnpm install
 pnpm run build
-pnpm dsh web
+pnpm dsh
 ```
 
 `pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.

@@ -49,6 +49,7 @@ Options:
                                  or --patch overlays and exit
 
 Examples:
+  dsh                                       start a terminal coding session in the current directory
   dsh web                                   boot the web profile (same as: dsh --profile web)
   dsh rescue --from-default-profile web
                                             recreate rescue from the shipped web template, then boot it
@@ -108,6 +109,7 @@ Example:
 Usage: dsh --profile headless [options] [task...]
 
 Answer one task and exit; the answer goes to stdout and diagnostics to stderr.
+Use --interactive for a terminal conversation.
 
 Arguments:
   task               the task text; multiple words are joined by spaces, and `-`
@@ -116,11 +118,14 @@ Arguments:
 Options:
   --json             write newline-delimited run events to stdout instead of the
                      final message
+  -i, --interactive  chat in the terminal with persisted follow-up turns
+  --terminal-bridge  serve the native terminal frontend over JSON stdio
   --session-id <id>  adopt the persisted Session with this id; an unknown id is
                      an error
   -h, --help         show this help
 
 Examples:
+  dsh headless --interactive                    start an interactive coding session
   dsh --profile headless "run the tests"          answer one task and exit
   echo "run the tests" | dsh --profile headless   read the task from stdin
   dsh --profile headless --json "run the tests"   emit machine-readable run events

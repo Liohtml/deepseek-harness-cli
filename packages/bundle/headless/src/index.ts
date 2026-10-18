@@ -5,7 +5,8 @@
  * `--session-id` names), drives the task to quiescence, streams provider
  * reasoning to stderr, flushes its Session, prints the final assistant text to
  * stdout, and exits. With `--json` it projects the run as newline-delimited
- * events instead of the final text.
+ * events instead of the final text. With `--interactive` it retains the Agent
+ * for terminal follow-ups and answers root-agent approval and question requests.
  *
  * @module @deepseek-ai/dsh-headless
  */
@@ -32,6 +33,8 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-subagent'
 import { internals } from './runner-internals.ts'
 import { projectJsonRun, boundJsonLine } from './json-stream.ts'
+import { runConversation } from './terminal.ts'
+import { createTerminalBridge } from './terminal-bridge.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'headless-runner'
@@ -41,18 +44,24 @@ export const inject = ['agentDefaultModel', 'agents', 'sessions']
 
 /** Plugin config: the task and run options resolved from this app's injected provider service. */
 export interface Config {
-  /** The prompt text for the single run; absent when the task arrives on stdin. */
+  /** Initial prompt text; absent reads stdin in one-shot mode or opens the interactive prompt. */
   task?: string
   /** Exact Session identity to adopt; absent for a fresh random identity. An id with no stored Session fails. */
   sessionId?: string
   /** Whether stdout carries the machine-readable event stream instead of final text. */
   json?: boolean
+  /** Accept follow-up prompts from a terminal until /exit or EOF. Incompatible with json. */
+  interactive?: boolean
+  /** Native terminal stdio transport; requires interactive and excludes task/json. */
+  terminalBridge?: boolean
 }
 
 export const Config: z<Config> = z.object({
   task: z.string(),
   sessionId: z.string(),
   json: z.boolean(),
+  interactive: z.boolean(),
+  terminalBridge: z.boolean(),
 })
 
 /** Outcome of one owned run interval. */
@@ -324,10 +333,16 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     throw new Error('headless-runner: sessionId must not be blank')
   }
 
-  const task = config.task === undefined || config.task === '-'
+  if (config.interactive && (config.json || config.task === '-')) {
+    throw new Error('interactive mode cannot use JSON output or piped input')
+  }
+  if (config.terminalBridge && (!config.interactive || config.json || config.task !== undefined)) {
+    throw new Error('terminalBridge requires interactive mode without a task or JSON run output')
+  }
+  const task = config.interactive ? config.task : config.task === undefined || config.task === '-'
     ? await internals.readStdin()
     : config.task
-  if (task.trim() === '') {
+  if (!config.interactive && (task === undefined || task.trim() === '')) {
     throw new Error('a task is required, for example: dsh --profile headless "run the tests"')
   }
 
@@ -359,9 +374,25 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     // re-read the log the runner holds before submitting the task.
     assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
   }
+  if (config.interactive) {
+    const terminalIo = config.terminalBridge ? createTerminalBridge(process.stdin, process.stdout) : undefined
+    await runConversation(ctx, agent, {
+      cwd, task, io: terminalIo, resumeCommand: config.terminalBridge ? 'dsh --resume' : undefined,
+    }, async (prompt) => {
+      return runTask(ctx, agent, prompt, { ...config, json: false }, io, cwd)
+    })
+    io.exit(0)
+    return
+  }
+  io.exit(await runTask(ctx, agent, task!, config, io, cwd))
+}
+
+/** Drive one owned turn interval and flush it before accepting another prompt. */
+async function runTask(ctx: Context, agent: Agent, task: string, config: Config, io: HeadlessIo, cwd: string): Promise<number> {
+  const sessions = ctx.get('sessions')!
   const firstSeq = agent.session.seq
   const projection = config.json === true ? projectJsonRun(ctx, agent, io.stdout, { cwd }) : undefined
-  const stopReasoning = projection === undefined ? streamReasoning(ctx, agent, io.stderr) : undefined
+  const stopReasoning = projection === undefined && !config.interactive ? streamReasoning(ctx, agent, io.stderr) : undefined
   let failure: { error: unknown; atOffset: SessionLogOffset } | undefined
   const stopErrors = ctx.on('agent/error', ({ agent: subject, error }) => {
     if (subject === agent) failure = { error, atOffset: agent.session.seq }
@@ -390,12 +421,12 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     await sessions.flush(agent.session)
     if (failure !== undefined) throw failure.error
     const outcome = summarize(agent.session, firstSeq)
-    if (projection === undefined) io.stdout.write(outcome.text + '\n')
-    else projection.finish(outcome.text)
+    if (projection === undefined && !config.interactive) io.stdout.write(outcome.text + '\n')
+    else projection?.finish(outcome.text)
     if (outcome.reason?.kind === 'error') {
       io.stderr.write(`dsh: ${outcome.reason.error.code}: ${outcome.reason.error.message}\n`)
     }
-    io.exit(outcome.reason?.kind === 'completed' ? 0 : 1)
+    return outcome.reason?.kind === 'completed' ? 0 : 1
   } finally {
     stopErrors()
     stopTerminals()
