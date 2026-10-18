@@ -16,3 +16,5 @@ description: "不带参数的 dsh 现在启动交互式编程会话，不再因�
 1. 在交互终端中使用 `dsh`。自动化仍须显式选择配置，例如 `dsh headless "run the tests"`；无参数管道调用会失败并提示终端用法。
 2. 用 `dsh --help` 查看启动器帮助。使用 Rust 前端时，运行 `dsh headless --version` 查询运行时版本。
 3. 在项目中启动 `dsh` 并输入 `/exit`，无需模型请求即可验证启动和正常关闭。
+
+4. Rust 前端现使用全屏 Ratatui 界面和终端协议版本 2。请一并重新构建 Node 运行时并安装 Rust 程序；版本 1 程序无法连接新版桥接。需要 Rust 1.88 或更新版本。用 `dsh --demo` 无需 API 密钥即可预览界面。源码启动前，请运行 `node --import tsx scripts/generate-typert.ts` 生成 Typert 文件。

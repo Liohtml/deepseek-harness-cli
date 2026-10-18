@@ -1,6 +1,8 @@
 //! Native TTY frontend. Agent execution stays inside the supported DSH headless profile.
+mod editor;
 mod runtime;
 mod terminal;
+mod ui;
 
 use std::{env, ffi::OsString, io::IsTerminal, path::PathBuf, process::ExitCode};
 
@@ -14,12 +16,14 @@ Usage: dsh [--cwd PATH] [--resume SESSION]
   dsh --cwd PATH              Open a session in another project
   dsh headless \"run tests\"    Run one task and exit (also accepts piped input)
   dsh web                     Start the existing web profile
+  dsh --demo                  Preview the UI without a model or API key
   dsh --help                  Show this help
   dsh --version               Show the native frontend version
 
 In a session: /help, /session, /multiline, /exit.
 Ctrl+C stops the current turn; at the prompt it exits. Ctrl+D exits.
-Arrow keys edit input and browse in-memory prompt history.
+Alt+Enter inserts a newline. F1 shows shortcuts, F2 opens diagnostics.
+PgUp/PgDn scroll; Ctrl+T expands tool details.
 
 Requires the built fork's Node.js runtime. DSH_RUNTIME_JS overrides its entry
 file; DSH_NODE overrides the Node executable. Set DEEPSEEK_API_KEY in your
@@ -30,6 +34,7 @@ environment or project .env. No web server is needed.
 enum Invocation {
     Help,
     Version,
+    Demo,
     Terminal {
         cwd: Option<PathBuf>,
         resume: Option<OsString>,
@@ -40,6 +45,7 @@ enum Invocation {
 fn parse(args: Vec<OsString>) -> Result<Invocation, String> {
     match args.first().and_then(|arg| arg.to_str()) {
         Some("--help" | "-h") => return Ok(Invocation::Help),
+        Some("--demo") => return Ok(Invocation::Demo),
         Some("--version" | "-V") => return Ok(Invocation::Version),
         Some("--cwd" | "--resume") | None => {}
         _ => return Ok(Invocation::Profile(args)),
@@ -78,18 +84,25 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
             println!("dsh {} (Rust frontend)", env!("CARGO_PKG_VERSION"));
             Ok(0)
         }
+        Invocation::Demo => {
+            if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+                print!("{}", ui::preview_text(100, 32));
+                return Ok(0);
+            }
+            terminal::run(None, true)
+        }
         Invocation::Profile(args) => runtime::forward(args),
         Invocation::Terminal { cwd, resume } => {
             if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
                 return Err(
-                    "dsh needs a terminal; for pipes use dsh headless \"task\" or dsh headless -"
+                    "open dsh in a real terminal (not a captured shell command); use dsh --demo for a non-interactive UI preview. For pipes use dsh headless \"task\" or dsh headless -"
                         .into(),
                 );
             }
             if let Some(cwd) = cwd {
                 env::set_current_dir(cwd)?;
             }
-            terminal::run(resume)
+            terminal::run(resume, false)
         }
     }
 }

@@ -60,7 +60,7 @@ pnpm dsh headless --interactive "Inspect this project's test failures"
 pnpm dsh headless --interactive --session-id session-…
 ```
 
-从项目目录启动；仓库源码命令使用该目录作为工作区。交互模式要求 stdin 和 stdout 均为终端，并拒绝 `--json` 和 stdin 标记 `-`。模型、文件工具、沙箱、凭据和持久化 Session 与一次性任务相同。每轮在接受下一个提示之前刷新到持久存储。agent 工作时显示已提交的助手消息、工具名称和参数；不显示推理和未完成的 token 增量。
+从项目目录启动；仓库源码命令使用该目录作为工作区。交互模式要求 stdin 和 stdout 均为终端，并拒绝 `--json` 和 stdin 标记 `-`。模型、文件工具、沙箱、凭据和持久化 Session 与一次性任务相同。每轮在接受下一个提示之前刷新到持久存储。agent 工作时显示已提交的助手消息、工具名称和参数；普通终端不显示推理和未完成的 token 增量。原生前端流式显示文本增量，并以已提交的消息替换对应的部分回答；始终不显示推理。
 
 | 输入 | 操作 |
 |---|---|
@@ -75,7 +75,7 @@ pnpm dsh headless --interactive --session-id session-…
 
 终端只回答根 agent 的请求。限时问题保留现有超时；此终端模式不支持超时后的答复、会话浏览、模型切换和子 agent 交互。恢复会话遵循与一次性模式相同的 cwd 和预设限制。
 
-`dsh` 无参数时启动交互模式。[Rust 前端](../../../native/cli/README.zh.md) 通过 `--terminal-bridge` 将终端输入与 Agent 进程分离。此选项要求专用 JSON stdio，不能与 `--interactive`、`--json` 或任务文本组合。版本 1 使用 `hello`、`output`、`prompt`、`cancel`、`close` 和 `error` 帧；客户端发送 `answer`（含当前提示 id）、`interrupt` 或 `close`。EOF 会取消当前轮次。
+`dsh` 无参数时启动交互模式。[Rust 前端](../../../native/cli/README.zh.md) 通过 `--terminal-bridge` 将终端输入与 Agent 进程分离。此选项要求专用 JSON stdio，不能与 `--interactive`、`--json` 或任务文本组合。版本 2 使用 `hello`、`session`、`assistant_start`、`assistant_delta`、`assistant`、`tool`、`tool_result`、`output`、`prompt`、`cancel`、`close` 和 `error` 帧；客户端发送 `answer`（含当前提示 id）、`interrupt` 或 `close`。EOF 会取消当前轮次。
 
 <a id="credentials"></a>
 ### 凭据

@@ -339,7 +339,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   if (config.terminalBridge && (!config.interactive || config.json || config.task !== undefined)) {
     throw new Error('terminalBridge requires interactive mode without a task or JSON run output')
   }
-  const task = config.interactive ? config.task : config.task === undefined || config.task === '-'
+  const task = config.interactive ? config.task ?? '' : config.task === undefined || config.task === '-'
     ? await internals.readStdin()
     : config.task
   if (!config.interactive && (task === undefined || task.trim() === '')) {
@@ -378,18 +378,19 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     const terminalIo = config.terminalBridge ? createTerminalBridge(process.stdin, process.stdout) : undefined
     await runConversation(ctx, agent, {
       cwd, task, io: terminalIo, resumeCommand: config.terminalBridge ? 'dsh --resume' : undefined,
+      provider: selection.provider, model: selection.model,
     }, async (prompt) => {
       return runTask(ctx, agent, prompt, { ...config, json: false }, io, cwd)
     })
     io.exit(0)
     return
   }
-  io.exit(await runTask(ctx, agent, task!, config, io, cwd))
+  io.exit(await runTask(ctx, agent, task, config, io, cwd))
 }
 
 /** Drive one owned turn interval and flush it before accepting another prompt. */
 async function runTask(ctx: Context, agent: Agent, task: string, config: Config, io: HeadlessIo, cwd: string): Promise<number> {
-  const sessions = ctx.get('sessions')!
+  const sessions = ctx.sessions
   const firstSeq = agent.session.seq
   const projection = config.json === true ? projectJsonRun(ctx, agent, io.stdout, { cwd }) : undefined
   const stopReasoning = projection === undefined && !config.interactive ? streamReasoning(ctx, agent, io.stderr) : undefined

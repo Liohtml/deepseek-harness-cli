@@ -60,7 +60,7 @@ pnpm dsh headless --interactive "Inspect this project's test failures"
 pnpm dsh headless --interactive --session-id session-…
 ```
 
-Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, credentials, and persisted Sessions as one-shot tasks. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; reasoning and partial token deltas are not displayed.
+Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, credentials, and persisted Sessions as one-shot tasks. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; the plain terminal does not display reasoning or partial token deltas. The native frontend streams text deltas and replaces each partial answer with its committed message; it never displays reasoning.
 
 | Input | Action |
 |---|---|
@@ -75,7 +75,7 @@ Approval prompts accept only `y` or `yes` as a one-time grant; Enter rejects. Ag
 
 The terminal answers root-agent requests only. Timed questions retain their existing timeout; late answers, session browsing, model switching, and subagent interaction are not available in this terminal mode. Resume uses the same cwd and preset restrictions as one-shot adoption.
 
-`dsh` without arguments selects interactive mode. The [Rust frontend](../../../native/cli/README.md) uses `--terminal-bridge` to separate terminal input from the Agent process. This option requires dedicated JSON stdio and rejects `--interactive`, `--json`, and task text. Version 1 sends `hello`, `output`, `prompt`, `cancel`, `close`, and `error` frames; the client sends `answer` with the active prompt id, `interrupt`, or `close`. EOF cancels the current turn.
+`dsh` without arguments selects interactive mode. The [Rust frontend](../../../native/cli/README.md) uses `--terminal-bridge` to separate terminal input from the Agent process. This option requires dedicated JSON stdio and rejects `--interactive`, `--json`, and task text. Version 2 sends `hello`, `session`, `assistant_start`, `assistant_delta`, `assistant`, `tool`, `tool_result`, `output`, `prompt`, `cancel`, `close`, and `error` frames; the client sends `answer` with the active prompt id, `interrupt`, or `close`. EOF cancels the current turn.
 
 <a id="credentials"></a>
 ### Credentials

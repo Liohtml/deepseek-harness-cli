@@ -12,7 +12,7 @@ use std::{
 };
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum Frame {
     Hello {
         version: u32,
@@ -31,11 +31,34 @@ pub enum Frame {
     Error {
         message: String,
     },
+    Session {
+        cwd: String,
+        id: String,
+        provider: Option<String>,
+        model: Option<String>,
+    },
+    AssistantStart,
+    AssistantDelta {
+        text: String,
+    },
+    Assistant {
+        text: String,
+    },
+    Tool {
+        id: String,
+        name: String,
+        arguments: String,
+    },
+    ToolResult {
+        id: String,
+        failed: bool,
+        text: String,
+    },
     Close,
 }
 
 #[derive(Serialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum Input<'a> {
     Answer { id: u64, text: &'a str },
     Interrupt,
@@ -188,8 +211,8 @@ mod tests {
     #[test]
     fn protocol_requires_known_frames_and_typed_prompt_ids() {
         assert!(matches!(
-            serde_json::from_str::<Frame>(r#"{"type":"hello","version":1}"#).unwrap(),
-            Frame::Hello { version: 1 }
+            serde_json::from_str::<Frame>(r#"{"type":"hello","version":2}"#).unwrap(),
+            Frame::Hello { version: 2 }
         ));
         assert!(
             serde_json::from_str::<Frame>(

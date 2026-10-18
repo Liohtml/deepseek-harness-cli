@@ -6,7 +6,7 @@ function setup() {
   const input = new PassThrough()
   const output = new PassThrough()
   const frames: Record<string, unknown>[] = []
-  output.on('data', chunk => { frames.push(JSON.parse(String(chunk))) })
+  output.on('data', (chunk) => { frames.push(JSON.parse(String(chunk))) })
   const interrupt = vi.fn()
   const closed = vi.fn()
   const io = createTerminalBridge(input, output)
@@ -17,7 +17,7 @@ function setup() {
 
 it('serializes questions and discards typeahead and duplicate answers', async () => {
   const { terminal, frames, send, io } = setup()
-  expect(frames.shift()).toEqual({ type: 'hello', version: 1 })
+  expect(frames.shift()).toEqual({ type: 'hello', version: 2 })
   io.write('Hello\nworld\n')
   expect(frames.shift()).toEqual({ type: 'output', text: 'Hello\nworld\n' })
   send({ type: 'answer', id: 1, text: 'stale' })
@@ -51,7 +51,7 @@ it('cancels active requests and accepts only the next prompt identity', async ()
   terminal.close()
 })
 
-it.each(['eof', 'close', 'malformed'] as const)('settles active and queued reads on %s', async mode => {
+it.each(['eof', 'close', 'malformed'] as const)('settles active and queued reads on %s', async (mode) => {
   const { input, terminal, frames, send, closed, interrupt } = setup()
   const first = terminal.ask('first')
   const second = terminal.ask('second')

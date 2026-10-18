@@ -28,6 +28,7 @@ it.each(['followups', 'recorded', 'bridge-recorded'] as const)('boots the intera
   const model = new MockAdapter([textResponse('First answer.'), textResponse('Second answer.')])
   const exited = Promise.withResolvers<number>()
   let transcript = ''
+  const presentation: { type: string; text?: string }[] = []
   const fixture = fileURLToPath(new URL('../../../../snapshots/session/text-turn/session.v1.jsonl', import.meta.url))
   const recorded = mode !== 'followups' ? parseSessionLog(await readFile(fixture, 'utf8')) : []
   const recordedPrompt = recorded.filter(event => event.type === 'user/message')
@@ -37,7 +38,7 @@ it.each(['followups', 'recorded', 'bridge-recorded'] as const)('boots the intera
     : ['Remember the word terminal.', 'What word did I ask you to remember?', '/exit']
   let closed = false
   terminalInternals.isTTY = () => true
-  terminalInternals.write = text => { transcript += text }
+  terminalInternals.write = (text) => { transcript += text }
   terminalInternals.open = () => ({
     get closed() { return closed },
     close: () => { closed = true },
@@ -47,9 +48,10 @@ it.each(['followups', 'recorded', 'bridge-recorded'] as const)('boots the intera
   const bridgeOutput = new PassThrough()
   if (mode === 'bridge-recorded') {
     Object.assign(terminalInternals, createTerminalBridge(bridgeInput, bridgeOutput))
-    bridgeOutput.on('data', chunk => {
+    bridgeOutput.on('data', (chunk) => {
       const frame = JSON.parse(String(chunk)) as { type: string; id?: number; text?: string }
-      if (frame.type === 'output') transcript += frame.text
+      presentation.push(frame)
+      if (frame.type === 'output' || frame.type === 'assistant') transcript += frame.text + '\n'
       if (frame.type === 'close') closed = true
       if (frame.type === 'prompt') queueMicrotask(() => {
         bridgeInput.write(JSON.stringify({ type: 'answer', id: frame.id, text: prompts.shift() }) + '\n')
@@ -103,8 +105,14 @@ it.each(['followups', 'recorded', 'bridge-recorded'] as const)('boots the intera
       expect(JSON.stringify(model.requests[1])).toContain('First answer.')
     }
     expect(closed).toBe(true)
+    if (mode === 'bridge-recorded') {
+      expect(presentation.some(frame => frame.type === 'session')).toBe(true)
+      expect(presentation.some(frame => frame.type === 'assistant_start')).toBe(true)
+      expect(presentation.filter(frame => frame.type === 'assistant_delta').map(frame => frame.text).join('')).toBe('PONG')
+      expect(presentation.filter(frame => frame.type === 'assistant')).toEqual([{ type: 'assistant', text: 'PONG' }])
+    }
     const output = transcript.replace(/Workspace: .*\n/, 'Workspace: <cwd>\n').replace(/Session: .*\n/, 'Session: <session>\n').replace(/\n+$/, '\n')
-    await expect(output).toMatchFileSnapshot(fileURLToPath(new URL(`./expected/terminal-${mode === 'followups' ? mode : 'recorded'}.txt`, import.meta.url)))
+    await expect(output).toMatchFileSnapshot(fileURLToPath(new URL(`./expected/terminal-${mode}.txt`, import.meta.url)))
   } finally {
     await ctx.fiber.dispose()
     Object.assign(terminalInternals, originalTerminal)

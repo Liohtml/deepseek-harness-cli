@@ -1,4 +1,4 @@
-/** Version 1 JSON-lines terminal transport; the parent owns the TTY, the profile owns the Agent. */
+/** Version 2 JSON-lines terminal transport; the parent owns the TTY, the profile owns the Agent. */
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
 import type { ConversationIo } from './terminal.ts'
@@ -14,7 +14,8 @@ export function createTerminalBridge(input: Readable, output: Writable): Convers
   const send = (frame: object): void => { output.write(`${JSON.stringify(frame)}\n`) }
   return {
     isTTY: () => true,
-    write: text => { send({ type: 'output', text }) },
+    write: (text) => { send({ type: 'output', text }) },
+    event: send,
     open(onInterrupt, onClose) {
       const lines = createInterface({ input, terminal: false })
       const lifetime = new AbortController()
@@ -48,7 +49,7 @@ export function createTerminalBridge(input: Readable, output: Writable): Convers
           close()
         }
       })
-      send({ type: 'hello', version: 1 })
+      send({ type: 'hello', version: 2 })
       return {
         get closed() { return lifetime.signal.aborted },
         close,

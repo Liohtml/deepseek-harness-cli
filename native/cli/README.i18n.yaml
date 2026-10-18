@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write native/cli/README.md
 /native-dsh-terminal:
-  en: 375c057252c5282d
-  zh: 17721ecd04054594
+  en: 2ffedc318520ed46
+  zh: 0562cdb17c818e54
 /native-dsh-terminal/installation:
-  en: 82eb6ef6addb6b9a
-  zh: 27c97132fd06ca9a
+  en: d6348eb4527caf8a
+  zh: 5bda74eb39f85a54
 /native-dsh-terminal/usage:
-  en: 22417cfc56cc7078
-  zh: f4ac726560567f2f
+  en: 003d7a6ff492103a
+  zh: 6562e387e12bb036
 /native-dsh-terminal/development:
-  en: cf15617f07b29078
-  zh: e8fe01956dda5ccb
+  en: 513ca5cf269aafe8
+  zh: 6e6534a63dd25d46
