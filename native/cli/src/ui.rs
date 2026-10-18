@@ -19,6 +19,29 @@ const GREEN: Color = Color::Rgb(141, 214, 180);
 const AMBER: Color = Color::Rgb(241, 194, 123);
 const RED: Color = Color::Rgb(245, 143, 143);
 
+// Terminal renditions of the DeepSeek whale in apps/web/public/favicon.svg.
+const WHALE: &[&str] = &[
+    "     ▗▄▄▄▄▄▄▄▟▌   ▗█▖",
+    "  ▗▟██████████▄   ▝███▄▄▄▄▟█",
+    " ▟██████████████▙▖ ▀██████▛▘",
+    "▟█▀▀▀▜████████████▙▄▗██▛▀▘",
+    "██      ▀▜█████▄▝▜█████▘",
+    "▜█▌       ▝▜████▄ ▐███▛",
+    "▝██▖        ▝████████▛",
+    " ▝██▙▖   ▄▄▖  ▜█████▀",
+    "   ▀███▄▄▟███▄▖▝▜███▙▄",
+    "     ▝▀▜██████▛▀▘",
+];
+const WHALE_COMPACT: &[&str] = &[
+    "   ▄▄▄▄▄▄█▘  ▐▙▖   ▄",
+    " ▟█████████▄ ▝█████▛",
+    "▟▛▀▀▀████████▄▄██▀",
+    "█▌    ▝▀███▌▝███▌",
+    "▐█▖     ▝▜█████▛",
+    " ▀█▙▄ ▐▙▄ ▀███▌",
+    "   ▀▀██████▀▀▀▀▘",
+];
+
 pub const COMMANDS: &[(&str, &str)] = &[
     ("/help", "Keyboard shortcuts and commands"),
     ("/session", "Session identity and resume command"),
@@ -627,40 +650,64 @@ fn header(frame: &mut Screen<'_>, app: &App, area: Rect) {
 }
 
 fn welcome(frame: &mut Screen<'_>, app: &App, area: Rect) {
-    let top = area.y + area.height.saturating_sub(14) / 2;
-    let mut lines = vec![
-        Line::from(bold("     ▄▀▀▄  ▄▀▀▀  █  █", BLUE)),
-        Line::from(bold("     █  █  ▀▀▀▄  █▀▀█", BLUE)),
-        Line::from(bold("     ▀▀▀   ▀▀▀   ▀  ▀", BLUE)),
-        Line::default(),
-        Line::from(bold("     Your project. Your next move.", TEXT)),
-        Line::from(span(
-            "     Inspect code, make a change, verify the result.",
+    let roomy = area.height >= 21 && area.width >= 40;
+    let padding = if area.width >= 60 { "     " } else { " " };
+    let whale = if roomy { WHALE } else { WHALE_COMPACT };
+    let mut lines = Vec::new();
+    if area.height >= 11 {
+        lines.extend(
+            whale
+                .iter()
+                .map(|line| Line::from(bold(format!("{padding}{line}"), BLUE))),
+        );
+        lines.push(Line::default());
+    }
+    lines.push(Line::from(bold(
+        format!("{padding}Your project. Your next move."),
+        TEXT,
+    )));
+    if roomy {
+        lines.push(Line::from(span(
+            format!("{padding}Inspect code, make a change, verify the result."),
             MUTED,
-        )),
-        Line::default(),
-        Line::from(vec![span("     Workspace  ", MUTED), span(&app.cwd, TEXT)]),
-    ];
+        )));
+        lines.push(Line::default());
+    }
+    lines.push(Line::from(vec![
+        span(format!("{padding}Workspace  "), MUTED),
+        span(&app.cwd, TEXT),
+    ]));
     if !app.model.is_empty() {
         lines.push(Line::from(vec![
-            span("     Model      ", MUTED),
+            span(format!("{padding}Model      "), MUTED),
             span(&app.model, BLUE),
         ]));
     }
-    lines.extend([
-        Line::default(),
-        Line::from(span("     Start with a task", MUTED)),
-        Line::from(span("     › Explain how this project is organized", TEXT)),
-        Line::from(span("     › Find the cause of a failing test", TEXT)),
-        Line::from(span("     › Review my changes before I commit", TEXT)),
-    ]);
-    if area.width < 60 {
-        for line in &mut lines {
-            for span in &mut line.spans {
-                span.content = span.content.trim_start().to_owned().into();
-            }
-        }
+    if roomy {
+        lines.extend([
+            Line::default(),
+            Line::from(span(format!("{padding}Start with a task"), MUTED)),
+            Line::from(span(
+                format!("{padding}› Explain how this project is organized"),
+                TEXT,
+            )),
+            Line::from(span(
+                format!("{padding}› Find the cause of a failing test"),
+                TEXT,
+            )),
+            Line::from(span(
+                format!("{padding}› Review my changes before I commit"),
+                TEXT,
+            )),
+        ]);
+    } else if area.height >= 14 {
+        lines.push(Line::default());
+        lines.push(Line::from(span(
+            format!("{padding}/ commands · F1 help"),
+            MUTED,
+        )));
     }
+    let top = area.y + area.height.saturating_sub(lines.len() as u16) / 2;
     frame.render_widget(
         Paragraph::new(lines).wrap(Wrap { trim: false }),
         Rect::new(area.x, top, area.width, area.bottom().saturating_sub(top)),
