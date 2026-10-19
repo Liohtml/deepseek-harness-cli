@@ -237,6 +237,46 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
 }
 
 describe('headless runner', () => {
+  it('checkpoints an empty interactive Session before announcing its id or accepting input', async () => {
+    let announced = false
+    let persisted = false
+    terminalInternals.isTTY = () => true
+    terminalInternals.write = () => {
+      expect(persisted).toBe(true)
+      expect(test.output().order).toEqual(['flush'])
+      announced = true
+    }
+    terminalInternals.open = () => ({
+      closed: false, close: () => {},
+      ask: async () => {
+        expect(announced).toBe(true)
+        expect(test.output().order).toEqual(['flush'])
+        return '/exit'
+      },
+    })
+    const test = await bench({ afterPrompt: () => { throw new Error('no model turn expected') } }, { interactive: true, useStdin: true })
+    test.ctx.on('session/flush', async () => { await Promise.resolve(); persisted = true })
+    try {
+      expect(await test.run()).toMatchObject({ code: 0, order: ['flush', 'exit'] })
+      expect(announced).toBe(true)
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('does not announce a resumable Session when its initial checkpoint fails', async () => {
+    let opened = false
+    terminalInternals.isTTY = () => true
+    terminalInternals.open = () => {
+      opened = true
+      throw new Error('must not open after persistence failure')
+    }
+    const test = await bench({ afterPrompt: () => {} }, { interactive: true, useStdin: true })
+    test.ctx.on('session/flush', () => { throw new Error('session storage unavailable') })
+    try {
+      expect(await test.run()).toMatchObject({ code: 1, err: 'dsh: session storage unavailable\n' })
+      expect(opened).toBe(false)
+    } finally { await test.ctx.fiber.dispose() }
+  })
+
   it('answers root approvals and questions, delegates other agents, and removes answerers on exit', async () => {
     const prompts = ['yes', '', '2', '1,2', '/exit']
     terminalInternals.isTTY = () => true
@@ -275,7 +315,7 @@ describe('headless runner', () => {
     let asked = false
     terminalInternals.isTTY = () => true
     terminalInternals.write = () => {}
-    terminalInternals.open = onInterrupt => {
+    terminalInternals.open = (onInterrupt) => {
       interrupt = onInterrupt
       return { closed: false, close: () => {}, ask: async () => { asked = true; return '/exit' } }
     }
@@ -312,12 +352,12 @@ describe('headless runner', () => {
     let closed = false
     const prompts = ['second task', '/exit']
     terminalInternals.isTTY = () => true
-    terminalInternals.write = text => { transcript += text }
+    terminalInternals.write = (text) => { transcript += text }
     terminalInternals.open = () => ({
       get closed() { return closed },
       close: () => { closed = true },
       ask: async () => {
-        expect(test.output().order.filter(item => item === 'flush')).toHaveLength(turns)
+        expect(test.output().order.filter(item => item === 'flush')).toHaveLength(turns + 1)
         return prompts.shift()
       },
     })
@@ -331,7 +371,7 @@ describe('headless runner', () => {
     }, { interactive: true, task: 'first task' })
     try {
       const result = await test.run()
-      expect(result).toMatchObject({ code: 0, out: '', order: ['flush', 'flush', 'exit'] })
+      expect(result).toMatchObject({ code: 0, out: '', order: ['flush', 'flush', 'flush', 'exit'] })
       expect(identities.size).toBe(1)
       expect(transcript).toContain('Answer 1')
       expect(transcript).toContain('Answer 2')

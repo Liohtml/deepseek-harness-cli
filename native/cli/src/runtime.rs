@@ -111,6 +111,7 @@ pub struct Runtime {
     child: Child,
     input: Option<ChildStdin>,
     pub events: Receiver<Event>,
+    readers: Vec<thread::JoinHandle<()>>,
 }
 
 impl Runtime {
@@ -130,7 +131,7 @@ impl Runtime {
         let diagnostics = child.stderr.take().expect("piped stderr");
         let (sender, events) = mpsc::channel();
         let errors = sender.clone();
-        thread::spawn(move || {
+        let stderr_reader = thread::spawn(move || {
             for line in BufReader::new(diagnostics).lines() {
                 match line {
                     Ok(line) => {
@@ -145,7 +146,7 @@ impl Runtime {
                 }
             }
         });
-        thread::spawn(move || {
+        let stdout_reader = thread::spawn(move || {
             for line in BufReader::new(output).lines() {
                 let frame = match line {
                     Ok(line) => match serde_json::from_str(&line) {
@@ -164,6 +165,7 @@ impl Runtime {
             child,
             input,
             events,
+            readers: vec![stderr_reader, stdout_reader],
         })
     }
 
@@ -179,7 +181,12 @@ impl Runtime {
         self.input.take();
         let deadline = Instant::now() + Duration::from_secs(8);
         loop {
-            if let Some(status) = self.child.try_wait()? {
+            if let Some(status) = self.child.try_wait()?
+                && self.readers.iter().all(|reader| reader.is_finished())
+            {
+                for reader in self.readers.drain(..) {
+                    reader.join().map_err(|_| "runtime output reader failed")?;
+                }
                 return Ok(status
                     .code()
                     .and_then(|code| u8::try_from(code).ok())

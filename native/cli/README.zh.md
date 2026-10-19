@@ -59,9 +59,10 @@ python3 -m pip install -r native/cli/tests/requirements.txt
 python3 native/cli/tests/terminal_smoke.py
 ```
 
-POSIX PTY 测试使用假运行时，不发送 API 请求，并通过 Pyte 检查终端显示。源码开发时，先生成 Typert 文件，并从同一仓库版本重新构建原生程序：
+POSIX PTY 测试使用假运行时，不发送 API 请求，并通过 Pyte 检查终端显示。源码开发时，先构建宿主系统插件、生成 Typert 文件，再从同一仓库版本重新构建原生程序：
 
 ```sh
+node --import tsx native/system/scripts/build.ts --host-addon-only
 node --import tsx scripts/generate-typert.ts
 cargo build --release --locked --manifest-path native/cli/Cargo.toml
 ```
@@ -69,3 +70,5 @@ cargo build --release --locked --manifest-path native/cli/Cargo.toml
 随后将 `DSH_RUNTIME_JS` 设为 `apps/cli/src/bin.ts` 的绝对路径，并设置 `NODE_OPTIONS='--import tsx/esm'`，同时安装源码依赖。
 
 前后端使用终端协议版本 2。更新任一侧后，应一并重建两侧。缺少 `lib/typert.host.js` 表示尚未生成运行时文件；源码开发使用上述生成命令，已安装的运行时使用 `pnpm run build`。
+
+缺少 `system.node` 表示尚未构建宿主系统插件；请运行上面的 host-addon 命令。该插件提供保存和恢复 Session 所需的文件锁。后端失败时，前端恢复终端、打印诊断信息，并以非零状态退出。

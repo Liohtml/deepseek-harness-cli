@@ -88,8 +88,18 @@ pub fn run(resume: Option<OsString>, demo: bool) -> Result<u8, Box<dyn std::erro
     } else {
         Ok(0)
     };
+    if let Some(runtime) = &runtime {
+        for event in runtime.events.try_iter() {
+            match event {
+                Event::Diagnostic(text)
+                | Event::Failure(text)
+                | Event::Frame(Frame::Error { message: text }) => app.diagnose(text),
+                _ => {}
+            }
+        }
+    }
     drop(screen);
-    if result.is_err() || status.is_err() {
+    if result.is_err() || !status.as_ref().is_ok_and(|code| *code == 0) {
         for line in app
             .diagnostics
             .iter()
@@ -100,7 +110,7 @@ pub fn run(resume: Option<OsString>, demo: bool) -> Result<u8, Box<dyn std::erro
     }
     result?;
     let status = status?;
-    if !app.session.is_empty() && !demo {
+    if status == 0 && !app.session.is_empty() && !demo {
         println!("Session: {}", app.session);
     }
     Ok(status)

@@ -143,6 +143,22 @@ class TerminalTest(unittest.TestCase):
         self.until("● Ready")
         self.finish()
 
+    def test_failure_after_close_is_reported_after_restoring_terminal(self):
+        self.send("fail-after-close\r")
+        self.until("dsh: session storage unavailable")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid:
+                self.pid = 0
+                self.assertEqual(os.waitstatus_to_exitcode(status), 1)
+                self.assertTrue(termios.tcgetattr(self.fd)[3] & termios.ICANON)
+                self.assertTrue(termios.tcgetattr(self.fd)[3] & termios.ECHO)
+                self.assertNotIn(b"Session: session-test", self.buffer)
+                return
+            time.sleep(.03)
+        self.fail("Failed runtime did not exit")
+
 
 if __name__ == "__main__":
     unittest.main()

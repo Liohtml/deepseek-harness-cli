@@ -22,6 +22,11 @@ createInterface({ input: process.stdin }).on('line', line => {
     return
   }
   if (command.type !== 'answer' || command.id !== id) throw new Error('Wrong answer identity')
+  if (command.text === 'fail-after-close') {
+    send({ type: 'close' })
+    process.stderr.write('dsh: session storage unavailable\n', () => process.exit(1))
+    return
+  }
   if (waiting) {
     waiting = false
     send({ type: 'output', text: `Approval answer: ${command.text}\n` })

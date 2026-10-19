@@ -60,7 +60,7 @@ pnpm dsh headless --interactive "Inspect this project's test failures"
 pnpm dsh headless --interactive --session-id session-…
 ```
 
-Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, credentials, and persisted Sessions as one-shot tasks. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; the plain terminal does not display reasoning or partial token deltas. The native frontend streams text deltas and replaces each partial answer with its committed message; it never displays reasoning.
+Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, credentials, and persisted Sessions as one-shot tasks. The Session is flushed before its id and first prompt are displayed, so an empty conversation can also be resumed. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; the plain terminal does not display reasoning or partial token deltas. The native frontend streams text deltas and replaces each partial answer with its committed message; it never displays reasoning.
 
 | Input | Action |
 |---|---|

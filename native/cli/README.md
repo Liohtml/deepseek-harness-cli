@@ -59,9 +59,10 @@ python3 -m pip install -r native/cli/tests/requirements.txt
 python3 native/cli/tests/terminal_smoke.py
 ```
 
-The POSIX PTY tests use a fake runtime without API requests and inspect the rendered terminal with Pyte. For source development, first generate the Typert artifacts and rebuild the native executable from the same checkout:
+The POSIX PTY tests use a fake runtime without API requests and inspect the rendered terminal with Pyte. For source development, first build the host system addon, generate the Typert artifacts, and rebuild the native executable from the same checkout:
 
 ```sh
+node --import tsx native/system/scripts/build.ts --host-addon-only
 node --import tsx scripts/generate-typert.ts
 cargo build --release --locked --manifest-path native/cli/Cargo.toml
 ```
@@ -69,3 +70,5 @@ cargo build --release --locked --manifest-path native/cli/Cargo.toml
 Then set `DSH_RUNTIME_JS` to the absolute `apps/cli/src/bin.ts` path and `NODE_OPTIONS='--import tsx/esm'`, with source dependencies installed.
 
 The frontend and backend use terminal protocol version 2. After updating either side, rebuild both together. Missing `lib/typert.host.js` errors mean the runtime artifacts have not been generated; run the generation command above for source development or `pnpm run build` for an installed runtime.
+
+Missing `system.node` means the host system addon has not been built; run the host-addon command above. It supplies the file lock required to save and resume Sessions. A backend failure restores the terminal and prints its diagnostics before exiting with a nonzero status.

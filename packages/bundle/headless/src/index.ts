@@ -342,7 +342,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   const task = config.interactive ? config.task ?? '' : config.task === undefined || config.task === '-'
     ? await internals.readStdin()
     : config.task
-  if (!config.interactive && (task === undefined || task.trim() === '')) {
+  if (!config.interactive && task.trim() === '') {
     throw new Error('a task is required, for example: dsh --profile headless "run the tests"')
   }
 
@@ -375,12 +375,14 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
   }
   if (config.interactive) {
+    // Materialize even an empty Session before the terminal publishes its resume id.
+    await sessions.flush(agent.session)
     const terminalIo = config.terminalBridge ? createTerminalBridge(process.stdin, process.stdout) : undefined
     await runConversation(ctx, agent, {
       cwd, task, io: terminalIo, resumeCommand: config.terminalBridge ? 'dsh --resume' : undefined,
       provider: selection.provider, model: selection.model,
     }, async (prompt) => {
-      return runTask(ctx, agent, prompt, { ...config, json: false }, io, cwd)
+      return runTask(ctx, agent, prompt, config, io, cwd)
     })
     io.exit(0)
     return
