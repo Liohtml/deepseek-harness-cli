@@ -22,7 +22,6 @@ pnpm run build
 
 ```sh
 cd /path/to/project
-export DEEPSEEK_API_KEY=your-key
 dsh
 dsh --resume session-…
 dsh --cwd /path/to/another-project
@@ -44,10 +43,29 @@ dsh --demo
 | Ctrl+T | 展开工具参数和结果 |
 | F1 | 打开快捷键帮助 |
 | F2 / `/diagnostics` | 查看运行时警告和错误 |
-| `/` 后按 ↑ / ↓ 和 Tab | 选择并补全命令 |
+| `/` 或 Ctrl+P，随后 ↑ / ↓ 和 Enter | 选择并执行命令；Tab 补全 |
 | `/clear` | 清空显示，保留 Agent 上下文 |
 
 界面使用备用屏幕，退出时恢复终端。运行时诊断信息可通过 F2 查看；启动失败时，在恢复 shell 后打印诊断信息。显示至少需要 28 列、10 行，建议使用 80 × 24 或更大的终端。
+
+<a id="connect-and-configure"></a>
+
+## 连接和配置
+
+在 `dsh` 中运行 `/login`，将 DeepSeek API key 粘贴到隐藏输入框。Enter 保存，Esc 取消。密钥不会进入屏幕输出、输入历史、Agent 消息或 Session 日志。它通过现有[凭据提供者](../../packages/credentials/credentials-local/README.zh.md)保存到 `$DSH_HOME/.credentials.yaml`（POSIX 权限 `0600`），并非加密的系统钥匙串；以同一用户身份运行的进程可以读取。此功能使用 API key 认证，不是浏览器账户登录。
+
+| 命令 | 操作 |
+|---|---|
+| `/login` | 通过隐藏输入保存或替换 DeepSeek API key |
+| `/logout` | 确认删除已保存密钥，并报告环境或 `.env` 回退来源 |
+| `/status` | 显示工作区、当前模型、凭据是否存在及其来源 |
+| `/model` | 为当前会话后续提示选择一个已公布的模型 |
+| `/check` | 通过当前模型发送简短连接检查提示；按正常 API 计费 |
+| `/sessions` | 列出当前项目最多十个已保存会话及恢复命令 |
+
+不要将密钥作为斜杠命令参数。`/login` 管理 `DEEPSEEK_API_KEY`；自定义提供者凭据引用仍通过现有环境或设置配置。保存密钥不代表已验证，只有 API 请求成功才能验证。模型选择仅在当前进程有效；后续启动使用配置的默认模型。
+
+<a id="development"></a>
 
 ## 开发
 
@@ -69,6 +87,6 @@ cargo build --release --locked --manifest-path native/cli/Cargo.toml
 
 随后将 `DSH_RUNTIME_JS` 设为 `apps/cli/src/bin.ts` 的绝对路径，并设置 `NODE_OPTIONS='--import tsx/esm'`，同时安装源码依赖。
 
-前后端使用终端协议版本 2。更新任一侧后，应一并重建两侧。缺少 `lib/typert.host.js` 表示尚未生成运行时文件；源码开发使用上述生成命令，已安装的运行时使用 `pnpm run build`。
+前后端使用终端协议版本 3。更新任一侧后，应一并重建两侧。缺少 `lib/typert.host.js` 表示尚未生成运行时文件；源码开发使用上述生成命令，已安装的运行时使用 `pnpm run build`。
 
 缺少 `system.node` 表示尚未构建宿主系统插件；请运行上面的 host-addon 命令。该插件提供保存和恢复 Session 所需的文件锁。后端失败时，前端恢复终端、打印诊断信息，并以非零状态退出。

@@ -1,7 +1,7 @@
-/** Version 2 JSON-lines terminal transport; the parent owns the TTY, the profile owns the Agent. */
+/** Version 3 JSON-lines terminal transport; the parent owns the TTY, the profile owns the Agent. */
 import { createInterface } from 'node:readline'
 import type { Readable, Writable } from 'node:stream'
-import type { ConversationIo } from './terminal.ts'
+import type { ConversationInput, ConversationIo } from './terminal.ts'
 
 /**
  * Connect one native frontend to the existing conversation driver.
@@ -44,38 +44,41 @@ export function createTerminalBridge(input: Readable, output: Writable): Convers
             case 'close': close(); break
             default: throw new Error('unknown terminal command')
           }
-        } catch (error) {
-          send({ type: 'error', message: error instanceof Error ? error.message : String(error) })
+        } catch {
+          send({ type: 'error', message: 'Invalid terminal command' })
           close()
         }
       })
-      send({ type: 'hello', version: 2 })
-      return {
+      send({ type: 'hello', version: 3 })
+      const ask = async (text: string, signal?: AbortSignal, secret = false): Promise<string | undefined> => {
+        const previous = tail
+        let release!: () => void
+        tail = new Promise<void>((resolve) => { release = resolve })
+        const abort = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal
+        try {
+          await previous
+          if (abort.aborted) return undefined
+          const id = ++nextId
+          return await new Promise<string | undefined>((resolve) => {
+            const finish = (answer: string | undefined): void => {
+              abort.removeEventListener('abort', cancel)
+              pending = undefined
+              resolve(answer)
+            }
+            const cancel = (): void => { send({ type: 'cancel', id }); finish(undefined) }
+            pending = { id, resolve: finish }
+            abort.addEventListener('abort', cancel, { once: true })
+            send(secret ? { type: 'secret_prompt', id, text } : { type: 'prompt', id, text, history: text === 'dsh> ' })
+          })
+        } finally { release() }
+      }
+      const reader: ConversationInput = {
         get closed() { return lifetime.signal.aborted },
         close,
-        async ask(text, signal) {
-          const previous = tail
-          let release!: () => void
-          tail = new Promise<void>((resolve) => { release = resolve })
-          const abort = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal
-          try {
-            await previous
-            if (abort.aborted) return undefined
-            const id = ++nextId
-            return await new Promise<string | undefined>((resolve) => {
-              const finish = (answer: string | undefined): void => {
-                abort.removeEventListener('abort', cancel)
-                pending = undefined
-                resolve(answer)
-              }
-              const cancel = (): void => { send({ type: 'cancel', id }); finish(undefined) }
-              pending = { id, resolve: finish }
-              abort.addEventListener('abort', cancel, { once: true })
-              send({ type: 'prompt', id, text, history: text === 'dsh> ' })
-            })
-          } finally { release() }
-        },
+        ask,
+        askSecret: text => ask(text, undefined, true),
       }
+      return reader
     },
   }
 }

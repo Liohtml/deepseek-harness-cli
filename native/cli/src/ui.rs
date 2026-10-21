@@ -43,6 +43,12 @@ const WHALE_COMPACT: &[&str] = &[
 ];
 
 pub const COMMANDS: &[(&str, &str)] = &[
+    ("/login", "Connect DeepSeek · hidden API key input"),
+    ("/model", "Choose a model for this session"),
+    ("/status", "Check setup, model and workspace"),
+    ("/check", "Verify access with a short API request"),
+    ("/sessions", "Find saved sessions in this project"),
+    ("/logout", "Remove the saved DeepSeek API key"),
     ("/help", "Keyboard shortcuts and commands"),
     ("/session", "Session identity and resume command"),
     ("/diagnostics", "Inspect runtime diagnostics"),
@@ -71,6 +77,7 @@ pub struct Prompt {
     pub id: u64,
     pub text: String,
     pub history: bool,
+    pub secret: bool,
 }
 
 pub enum Kind {
@@ -92,6 +99,8 @@ pub struct Message {
 }
 
 pub struct App {
+    pub auth: Option<bool>,
+    pub auth_source: Option<String>,
     pub cwd: String,
     pub session: String,
     pub provider: String,
@@ -117,6 +126,8 @@ pub struct App {
 impl App {
     pub fn new(cwd: String) -> Self {
         Self {
+            auth: None,
+            auth_source: None,
             cwd,
             session: String::new(),
             provider: String::new(),
@@ -223,7 +234,26 @@ impl App {
                         text: text.trim().to_owned(),
                     });
                 }
-                self.prompt = Some(Prompt { id, text, history });
+                self.prompt = Some(Prompt {
+                    id,
+                    text,
+                    history,
+                    secret: false,
+                });
+            }
+            Frame::SecretPrompt { id, text } => {
+                self.apply(Frame::Prompt {
+                    id,
+                    text,
+                    history: false,
+                });
+                if let Some(prompt) = &mut self.prompt {
+                    prompt.secret = true;
+                }
+            }
+            Frame::Auth { configured, source } => {
+                self.auth = Some(configured);
+                self.auth_source = source.map(|value| safe_text(&value));
             }
             Frame::Cancel { id } => {
                 if self.prompt.as_ref().is_some_and(|prompt| prompt.id == id) {
@@ -280,14 +310,16 @@ impl App {
             .collect()
     }
     pub fn submitted(&mut self, prompt: &Prompt, text: &str) {
-        self.messages.push(Message {
-            kind: if prompt.history {
-                Kind::User
-            } else {
-                Kind::Note
-            },
-            text: safe_text(text),
-        });
+        if !prompt.secret {
+            self.messages.push(Message {
+                kind: if prompt.history {
+                    Kind::User
+                } else {
+                    Kind::Note
+                },
+                text: safe_text(text),
+            });
+        }
         if prompt.history
             && !text.trim().is_empty()
             && self.history.back().map(String::as_str) != Some(text)
@@ -560,7 +592,14 @@ pub fn render(frame: &mut Screen<'_>, app: &App) {
         area.width.saturating_sub(margin * 2),
         area.height,
     );
-    let (input_lines, cursor) = app.editor.layout(content.width.saturating_sub(4) as usize);
+    let (input_lines, cursor) = if app.prompt.as_ref().is_some_and(|prompt| prompt.secret) {
+        let mut masked = Editor::default();
+        masked.replace(&"•".repeat(app.editor.chars.len()));
+        masked.cursor = app.editor.cursor;
+        masked.layout(content.width.saturating_sub(4) as usize)
+    } else {
+        app.editor.layout(content.width.saturating_sub(4) as usize)
+    };
     let input_height = (input_lines.len() as u16).clamp(2, 6) + 2;
     let chunks = Layout::vertical([
         Constraint::Length(3),
@@ -607,7 +646,17 @@ pub fn render(frame: &mut Screen<'_>, app: &App) {
             })
             .collect();
         frame.render_widget(
-            Paragraph::new(lines).block(box_style("Commands · Tab to complete", BLUE)),
+            Paragraph::new(lines)
+                .scroll((
+                    app.palette_index
+                        .saturating_sub(height.saturating_sub(3) as usize)
+                        as u16,
+                    0,
+                ))
+                .block(box_style(
+                    "Commands · ↑↓ select · Enter run · Esc close",
+                    BLUE,
+                )),
             rect,
         );
     }
@@ -682,6 +731,19 @@ fn welcome(frame: &mut Screen<'_>, app: &App, area: Rect) {
             span(format!("{padding}Model      "), MUTED),
             span(&app.model, BLUE),
         ]));
+    }
+    if let Some(configured) = app.auth {
+        lines.push(Line::from(span(
+            format!(
+                "{padding}{}",
+                if configured {
+                    "DeepSeek key configured · /model to choose · /check to verify"
+                } else {
+                    "Connect DeepSeek → /login · paste your key securely"
+                }
+            ),
+            if configured { GREEN } else { AMBER },
+        )));
     }
     if roomy {
         lines.extend([
@@ -791,7 +853,9 @@ fn composer(
 ) {
     let question = app.prompt.as_ref().filter(|prompt| !prompt.history);
     let (title, color) = if let Some(prompt) = question {
-        if prompt.text.contains("[y/N]") {
+        if prompt.secret {
+            ("API key · hidden · Enter saves · Esc cancels", GREEN)
+        } else if prompt.text.contains("[y/N]") {
             ("Permission · y allows once · Enter denies", AMBER)
         } else {
             ("Your answer", AMBER)
@@ -803,7 +867,9 @@ fn composer(
     let inner = block.inner(area);
     frame.render_widget(block, area);
     if app.editor.chars.is_empty() {
-        let hint = if question.is_some() {
+        let hint = if question.is_some_and(|prompt| prompt.secret) {
+            "Paste your key here. It stays out of the conversation."
+        } else if question.is_some() {
             "Type your answer…"
         } else if app.phase == Phase::Starting {
             "Opening your session…"
@@ -839,9 +905,9 @@ fn footer(frame: &mut Screen<'_>, app: &App, area: Rect) {
     let keys = if app.demo {
         " 1 welcome · 2 conversation · 3 permission · Esc exit"
     } else if area.width > 85 {
-        " Enter send   Alt+Enter newline   PgUp/PgDn scroll   Ctrl+T tools   F1 help"
+        " Enter send   Ctrl+P commands   Alt+Enter newline   Ctrl+T tools   F1 help"
     } else {
-        " Enter send · Alt+Enter newline · F1 help"
+        " Enter send · Ctrl+P commands · F1 help"
     };
     let model = if app.model.is_empty() {
         "Connecting…"
@@ -875,7 +941,6 @@ fn help(frame: &mut Screen<'_>, area: Rect) {
     );
     frame.render_widget(Clear, rect);
     let lines = vec![
-        Line::default(),
         Line::from(bold(" Work from your terminal", TEXT)),
         Line::default(),
         Line::from(span(" Enter          Send your message", TEXT)),
@@ -897,7 +962,10 @@ fn help(frame: &mut Screen<'_>, area: Rect) {
         Line::from(span(" Ctrl+C         Stop a turn; exit when idle", TEXT)),
         Line::from(span(" Ctrl+D         Save and exit", TEXT)),
         Line::default(),
-        Line::from(span(" /session       Show your resume command", BLUE)),
+        Line::from(span(" Ctrl+P         Browse and run commands", BLUE)),
+        Line::from(span(" /login /logout  Manage your DeepSeek API key", BLUE)),
+        Line::from(span(" /model /check   Choose and verify a model", BLUE)),
+        Line::from(span(" /sessions       Find saved project sessions", BLUE)),
         Line::from(span(
             " /clear         Clear display; keep session context",
             BLUE,
@@ -1034,9 +1102,12 @@ mod tests {
         app.editor.insert("/se");
         assert_eq!(
             app.palette(),
-            vec![("/session", "Session identity and resume command")]
+            vec![
+                ("/sessions", "Find saved sessions in this project"),
+                ("/session", "Session identity and resume command")
+            ]
         );
-        assert!(screen(&app, 100, 32).contains("Tab to complete"));
+        assert!(screen(&app, 100, 32).contains("Enter run"));
         app.editor.replace("my task");
         app.diagnose("missing module".into());
         app.show_diagnostics = true;

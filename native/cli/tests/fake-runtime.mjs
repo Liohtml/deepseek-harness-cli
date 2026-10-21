@@ -4,11 +4,12 @@ import { writeFileSync } from 'node:fs'
 
 const send = frame => process.stdout.write(JSON.stringify(frame) + '\n')
 writeFileSync(process.env.DSH_TEST_RECORD, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }))
-send({ type: 'hello', version: 2 })
+send({ type: 'hello', version: 3 })
 send({ type: 'session', cwd: process.cwd(), id: 'session-test', model: 'test-model', provider: 'fixture' })
 send({ type: 'prompt', id: 1, text: 'dsh> ', history: true })
 let id = 1
 let waiting = false
+let secret = false
 createInterface({ input: process.stdin }).on('line', line => {
   const command = JSON.parse(line)
   if (command.type === 'close' || command.text === '/exit') {
@@ -22,6 +23,17 @@ createInterface({ input: process.stdin }).on('line', line => {
     return
   }
   if (command.type !== 'answer' || command.id !== id) throw new Error('Wrong answer identity')
+  if (secret) {
+    secret = false
+    send({ type: 'output', text: command.text ? 'Key saved securely\n' : 'Key entry cancelled\n' })
+    send({ type: 'prompt', id: ++id, text: 'dsh> ', history: true })
+    return
+  }
+  if (command.text === '/login') {
+    secret = true
+    send({ type: 'secret_prompt', id: ++id, text: 'DeepSeek API key' })
+    return
+  }
   if (command.text === 'fail-after-close') {
     send({ type: 'close' })
     process.stderr.write('dsh: session storage unavailable\n', () => process.exit(1))

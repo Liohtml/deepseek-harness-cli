@@ -352,8 +352,8 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   // host plane and the agent reads them from the global layer. A deployment
   // that DOES configure one has to join it here first
   // (@deepseek-ai/dsh-agent-preset-registry README, "Composing a child agent").
+  const selected: ModelSelectionRef = { current: selection, assembled: undefined }
   const setup = (agentCtx: Context): void => {
-    const selected: ModelSelectionRef = { current: selection, assembled: undefined }
     installModelSelection(agentCtx, selected)
   }
   const sessionId = brandString<SessionId>(config.sessionId ?? `session-${randomUUID()}`)
@@ -381,6 +381,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     await runConversation(ctx, agent, {
       cwd, task, io: terminalIo, resumeCommand: config.terminalBridge ? 'dsh --resume' : undefined,
       provider: selection.provider, model: selection.model,
+      selectModel: (next) => { selected.current = next },
     }, async (prompt) => {
       return runTask(ctx, agent, prompt, config, io, cwd)
     })

@@ -2515,6 +2515,9 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0
     devDependencies:
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:*
+        version: link:../../credentials/credentials
       '@deepseek-ai/cordis-plugin-include':
         specifier: workspace:~
         version: link:../../../vendor/include

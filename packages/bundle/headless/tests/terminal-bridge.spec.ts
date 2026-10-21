@@ -6,7 +6,7 @@ function setup() {
   const input = new PassThrough()
   const output = new PassThrough()
   const frames: Record<string, unknown>[] = []
-  output.on('data', (chunk) => { frames.push(JSON.parse(String(chunk))) })
+  output.on('data', (chunk) => { frames.push(JSON.parse(String(chunk)) as Record<string, unknown>) })
   const interrupt = vi.fn()
   const closed = vi.fn()
   const io = createTerminalBridge(input, output)
@@ -17,7 +17,7 @@ function setup() {
 
 it('serializes questions and discards typeahead and duplicate answers', async () => {
   const { terminal, frames, send, io } = setup()
-  expect(frames.shift()).toEqual({ type: 'hello', version: 2 })
+  expect(frames.shift()).toEqual({ type: 'hello', version: 3 })
   io.write('Hello\nworld\n')
   expect(frames.shift()).toEqual({ type: 'output', text: 'Hello\nworld\n' })
   send({ type: 'answer', id: 1, text: 'stale' })
@@ -67,4 +67,17 @@ it.each(['eof', 'close', 'malformed'] as const)('settles active and queued reads
   expect(closed).toHaveBeenCalledOnce()
   expect(frames.at(-1)).toEqual({ type: 'close' })
   if (mode === 'malformed') expect(frames.some(frame => frame.type === 'error')).toBe(true)
+})
+
+it('uses a distinct secret request and never reflects secret answers', async () => {
+  const { terminal, frames, send } = setup()
+  try {
+    if (!terminal.askSecret) throw new Error('masked input unavailable')
+    const answer = terminal.askSecret('API key')
+    await vi.waitFor(() => { expect(frames.at(-1)?.type).toBe('secret_prompt') })
+    expect(frames.at(-1)).toEqual({ type: 'secret_prompt', id: 1, text: 'API key' })
+    send({ type: 'answer', id: 1, text: 'private-fixture-key' })
+    expect(await answer).toBe('private-fixture-key')
+    expect(JSON.stringify(frames)).not.toContain('private-fixture-key')
+  } finally { terminal.close() }
 })

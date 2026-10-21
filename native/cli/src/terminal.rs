@@ -122,6 +122,14 @@ fn submit(runtime: &mut Option<Runtime>, app: &mut App) -> Result<(), Box<dyn st
     };
     let text = app.editor.text();
     if prompt.history {
+        if text.split_whitespace().next() == Some("/login") && text.trim() != "/login" {
+            app.note(
+                "Use /login without arguments, then paste your key into the hidden input.".into(),
+            );
+            app.editor = Editor::default();
+            app.prompt = Some(prompt);
+            return Ok(());
+        }
         if text.trim().is_empty() {
             app.prompt = Some(prompt);
             return Ok(());
@@ -185,12 +193,12 @@ fn interact(
                 };
                 dirty = true;
                 match event {
-                    Event::Frame(Frame::Hello { version: 2 }) if !initialized => initialized = true,
-                    Event::Frame(Frame::Hello { version }) => return Err(format!("terminal protocol mismatch (received {version}, expected 2). Rebuild the Rust frontend and runtime together; see native/cli/README.md").into()),
+                    Event::Frame(Frame::Hello { version: 3 }) if !initialized => initialized = true,
+                    Event::Frame(Frame::Hello { version }) => return Err(format!("terminal protocol mismatch (received {version}, expected 3). Rebuild the Rust frontend and runtime together; see native/cli/README.md").into()),
                     Event::Frame(_) if !initialized => return Err("runtime omitted terminal handshake".into()),
                     Event::Frame(Frame::Error { message }) | Event::Failure(message) => return Err(message.into()),
                     Event::Frame(Frame::Close) => return Ok(()),
-                    Event::Frame(frame @ Frame::Prompt { .. }) => {
+                    Event::Frame(frame @ (Frame::Prompt { .. } | Frame::SecretPrompt { .. })) => {
                         if closing.is_none() {
                             // Input queued before this request cannot become a permission answer.
                             while event::poll(Duration::ZERO)? { let _ = event::read()?; }
@@ -232,6 +240,12 @@ fn interact(
                     if key.code == KeyCode::F(1) {
                         app.show_help = !app.show_help;
                     } else if key.code == KeyCode::Esc {
+                        if app.prompt.as_ref().is_some_and(|prompt| prompt.secret) {
+                            app.editor = Editor::default();
+                            submit(runtime, app)?;
+                        } else if !app.palette().is_empty() {
+                            app.editor = Editor::default();
+                        }
                         app.show_help = false;
                         app.show_diagnostics = false;
                         app.scroll = 0;
@@ -276,19 +290,39 @@ fn interact(
                             KeyCode::Char('a') => app.editor.cursor = 0,
                             KeyCode::Char('e') => app.editor.cursor = app.editor.chars.len(),
                             KeyCode::Char('u') => app.editor = Editor::default(),
-                            KeyCode::Char('j') if app.prompt.is_some() => app.editor.insert("\n"),
+                            KeyCode::Char('p')
+                                if app.prompt.as_ref().is_some_and(|prompt| prompt.history) =>
+                            {
+                                app.editor.replace("/");
+                                app.palette_index = 0;
+                            }
+                            KeyCode::Char('j')
+                                if app.prompt.as_ref().is_some_and(|prompt| !prompt.secret) =>
+                            {
+                                app.editor.insert("\n")
+                            }
                             _ => {}
                         }
                     } else if app.prompt.is_some() {
                         let palette = app.palette();
                         match key.code {
                             KeyCode::Enter
-                                if key.modifiers.contains(KeyModifiers::ALT)
-                                    || key.modifiers.contains(KeyModifiers::SHIFT) =>
+                                if !app.prompt.as_ref().is_some_and(|prompt| prompt.secret)
+                                    && (key.modifiers.contains(KeyModifiers::ALT)
+                                        || key.modifiers.contains(KeyModifiers::SHIFT)) =>
                             {
                                 app.editor.insert("\n")
                             }
-                            KeyCode::Enter => submit(runtime, app)?,
+                            KeyCode::Enter => {
+                                if !palette.is_empty()
+                                    && !palette.iter().any(|(name, _)| *name == app.editor.text())
+                                {
+                                    app.editor.replace(
+                                        palette[app.palette_index.min(palette.len() - 1)].0,
+                                    );
+                                }
+                                submit(runtime, app)?;
+                            }
                             KeyCode::Tab if !palette.is_empty() => app
                                 .editor
                                 .replace(palette[app.palette_index.min(palette.len() - 1)].0),
@@ -329,7 +363,11 @@ fn interact(
                     }
                 }
                 KeyEvent::Paste(text) if app.prompt.is_some() && !app.show_help => {
-                    app.editor.insert(&text)
+                    if app.prompt.as_ref().is_some_and(|prompt| prompt.secret) {
+                        app.editor.insert(text.trim());
+                    } else {
+                        app.editor.insert(&text);
+                    }
                 }
                 KeyEvent::Resize(_, _) => {}
                 _ => {}

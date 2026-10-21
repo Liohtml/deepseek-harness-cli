@@ -34,9 +34,11 @@
 - id: hmr
   disabled: true
 
-# One-shot jobs use launch-time credentials instead of the interactive store.
+# Interactive terminals use the managed store; one-shot jobs keep launch-time
+# credentials. Stop at `--` so literal task text cannot enable the store.
 - id: credentials
-  disabled: true
+  disabled: !!js >-
+    !ctx.cmdlineArgs.get().slice(0, ctx.cmdlineArgs.get().includes('--') ? ctx.cmdlineArgs.get().indexOf('--') : undefined).some(arg => ['--terminal-bridge', '--interactive', '-i'].includes(arg))
 
 - id: authorization
   disabled: true

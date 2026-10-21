@@ -49,11 +49,10 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```sh
 cd /path/to/your/project
-export DEEPSEEK_API_KEY='your-api-key'
 dsh
 ```
 
-也可在项目 `.env` 中设置 `DEEPSEEK_API_KEY`。请保留构建后的仓库：已安装程序使用其中的 Node.js 运行时。将安装目录加入 shell 的 PATH 配置，使后续终端也能找到程序。[安装参考](native/cli/README.zh.md) 说明运行时路径，以及安装多个版本时如何选择正确的 `dsh`。
+在 `dsh` 中运行 `/login`，通过隐藏输入框填写 API key，再用 `/model` 选择模型。`/check` 发送简短 API 连接测试（正常计费）。密钥保存在 DSH 私有凭据文件中；参阅[存储与安全说明](native/cli/README.zh.md#connect-and-configure)。也可以使用环境变量或项目 `.env` 中的 `DEEPSEEK_API_KEY`。请保留构建后的仓库：已安装程序使用其中的 Node.js 运行时。将安装目录加入 shell 的 PATH 配置，使后续终端也能找到程序。[安装参考](native/cli/README.zh.md) 说明运行时路径，以及安装多个版本时如何选择正确的 `dsh`。
 
 **想先体验界面？** 安装后运行 `dsh --demo`，无需 API 密钥。按 `1` 查看欢迎页、`2` 查看示例对话、`3` 查看权限提示，按 Esc 退出。
 
@@ -83,6 +82,7 @@ dsh headless "Run tests and summarize failures"  # One task, then exit
 | 按键 | 操作 |
 |---|---|
 | Enter | 发送消息或回答 |
+| Ctrl+P 或 `/` | 浏览命令；↑ / ↓ 选择，Enter 执行 |
 | Alt+Enter / Ctrl+J | 插入换行 |
 | ↑ / ↓ | 浏览提示历史 |
 | PgUp / PgDn | 滚动对话 |

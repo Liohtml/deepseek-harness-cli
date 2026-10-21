@@ -60,11 +60,12 @@ pnpm dsh headless --interactive "Inspect this project's test failures"
 pnpm dsh headless --interactive --session-id session-…
 ```
 
-从项目目录启动；仓库源码命令使用该目录作为工作区。交互模式要求 stdin 和 stdout 均为终端，并拒绝 `--json` 和 stdin 标记 `-`。模型、文件工具、沙箱、凭据和持久化 Session 与一次性任务相同。Session 在显示 id 和首个提示之前刷新到持久存储，因此空对话也能恢复。每轮在接受下一个提示之前刷新到持久存储。agent 工作时显示已提交的助手消息、工具名称和参数；普通终端不显示推理和未完成的 token 增量。原生前端流式显示文本增量，并以已提交的消息替换对应的部分回答；始终不显示推理。
+从项目目录启动；仓库源码命令使用该目录作为工作区。交互模式要求 stdin 和 stdout 均为终端，并拒绝 `--json` 和 stdin 标记 `-`。模型、文件工具、沙箱和持久化 Session 与一次性任务相同。Session 在显示 id 和首个提示之前刷新到持久存储，因此空对话也能恢复。每轮在接受下一个提示之前刷新到持久存储。agent 工作时显示已提交的助手消息、工具名称和参数；普通终端不显示推理和未完成的 token 增量。原生前端流式显示文本增量，并以已提交的消息替换对应的部分回答；始终不显示推理。
 
 | 输入 | 操作 |
 |---|---|
 | `/help` | 显示终端命令 |
+| `/login`、`/logout`、`/status`、`/model`、`/check`、`/sessions` | [在原生终端配置并查找](../../../native/cli/README.zh.md#connect-and-configure) |
 | `/session` | 打印当前 id 和恢复命令 |
 | `/multiline` | 输入多行原始文本；单独的 `.` 提交 |
 | `/exit`、`/quit` 或 Ctrl+D | 结束对话 |
@@ -80,7 +81,7 @@ pnpm dsh headless --interactive --session-id session-…
 <a id="credentials"></a>
 ### 凭据
 
-随附的 headless profile 禁用托管凭据存储，以及依赖它的 authorization 和 DeepSeek account 消费方。API 密钥路由依次使用启动环境、`<运行命令的目录>/.env` 和 `$DSH_HOME/.env`。GUI 保存的密钥和登录凭据不会被使用，存储文件保持原样。需要已保存登录凭据的提供方会失败，除非恢复存储认证；AWS profile 等提供方外部凭据链仍然可用。
+交互模式启用托管凭据存储，包括通过原生 `/login` 命令保存的密钥；已保存的密钥优先于环境后备。一次性任务禁用托管存储；两种模式均禁用 authorization 和 DeepSeek account 消费方。一次性任务的 API 密钥路由依次使用启动环境、`<运行命令的目录>/.env` 和 `$DSH_HOME/.env`。GUI 保存的密钥和登录凭据不会被使用，存储文件保持原样。需要已保存登录凭据的提供方会失败，除非恢复存储认证；AWS profile 等提供方外部凭据链仍然可用。
 
 启动变量为空时，请取消导出该变量，让 `.env` 后备生效；已导出的空值会遮蔽后备值。
 

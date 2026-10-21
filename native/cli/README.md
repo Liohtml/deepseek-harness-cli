@@ -22,7 +22,6 @@ Keep the built checkout at its installation path: the binary records its `apps/c
 
 ```sh
 cd /path/to/project
-export DEEPSEEK_API_KEY=your-key
 dsh
 dsh --resume session-…
 dsh --cwd /path/to/another-project
@@ -44,10 +43,29 @@ The project `.env` can supply the API key instead. `/help`, `/session`, `/multil
 | Ctrl+T | Expand tool arguments and results |
 | F1 | Open keyboard help |
 | F2 / `/diagnostics` | Inspect runtime warnings and errors |
-| `/` then ↑ / ↓ and Tab | Select and complete a command |
+| `/` or Ctrl+P, then ↑ / ↓ and Enter | Select and run a command; Tab completes it |
 | `/clear` | Clear the display while preserving agent context |
 
 The UI uses the alternate screen and restores the terminal on exit. Runtime diagnostics remain accessible through F2; startup failures print their diagnostics after restoring the shell. Rendering requires at least 28 columns and 10 rows; 80 × 24 or larger is recommended.
+
+<a id="connect-and-configure"></a>
+
+## Connect and configure
+
+Run `/login` inside `dsh` and paste your DeepSeek API key into the masked field. Enter saves it; Esc cancels. The key is excluded from screen output, prompt history, Agent messages, and Session logs. It is stored through the existing [credential provider](../../packages/credentials/credentials-local/README.md) in `$DSH_HOME/.credentials.yaml` (POSIX mode `0600`), not an encrypted OS keychain; processes running as your user can read it. This is API-key authentication, not a browser account sign-in.
+
+| Command | Action |
+|---|---|
+| `/login` | Save or replace the DeepSeek API key through masked input |
+| `/logout` | Confirm removal of the saved key; report environment or `.env` fallbacks |
+| `/status` | Show workspace, selected model, credential presence and source |
+| `/model` | Choose an advertised model for subsequent prompts in this session |
+| `/check` | Send a short connection-check prompt through the selected model; normal API charges apply |
+| `/sessions` | List up to ten saved sessions in this project with resume commands |
+
+Never pass keys as slash-command arguments. `/login` manages `DEEPSEEK_API_KEY`; custom provider credential references remain configured through their existing environment or settings. A saved key is not validated until an API request succeeds. Model selection lasts for the current process; future launches use the configured default.
+
+<a id="development"></a>
 
 ## Development
 
@@ -69,6 +87,6 @@ cargo build --release --locked --manifest-path native/cli/Cargo.toml
 
 Then set `DSH_RUNTIME_JS` to the absolute `apps/cli/src/bin.ts` path and `NODE_OPTIONS='--import tsx/esm'`, with source dependencies installed.
 
-The frontend and backend use terminal protocol version 2. After updating either side, rebuild both together. Missing `lib/typert.host.js` errors mean the runtime artifacts have not been generated; run the generation command above for source development or `pnpm run build` for an installed runtime.
+The frontend and backend use terminal protocol version 3. After updating either side, rebuild both together. Missing `lib/typert.host.js` errors mean the runtime artifacts have not been generated; run the generation command above for source development or `pnpm run build` for an installed runtime.
 
 Missing `system.node` means the host system addon has not been built; run the host-addon command above. It supplies the file lock required to save and resume Sessions. A backend failure restores the terminal and prints its diagnostics before exiting with a nonzero status.

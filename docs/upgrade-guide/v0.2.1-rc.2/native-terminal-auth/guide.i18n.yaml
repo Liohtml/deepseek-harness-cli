@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.1-rc.2/native-terminal-auth/guide.md
+/:
+  en: d2eeab726a00eab0
+  zh: 5f2f3dfee44bd7b5
+/native-terminal-authentication:
+  en: 9cbe96aff503024a
+  zh: 8d8c6383bc381ae0
+/native-terminal-authentication/change:
+  en: 3e165ac1f069d036
+  zh: ef0e733c02987565
+/native-terminal-authentication/migration:
+  en: 45d5316c9ab31bb8
+  zh: 955df8852aa8983f

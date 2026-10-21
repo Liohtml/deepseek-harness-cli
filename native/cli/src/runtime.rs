@@ -25,6 +25,14 @@ pub enum Frame {
         text: String,
         history: bool,
     },
+    SecretPrompt {
+        id: u64,
+        text: String,
+    },
+    Auth {
+        configured: bool,
+        source: Option<String>,
+    },
     Cancel {
         id: u64,
     },
@@ -218,8 +226,8 @@ mod tests {
     #[test]
     fn protocol_requires_known_frames_and_typed_prompt_ids() {
         assert!(matches!(
-            serde_json::from_str::<Frame>(r#"{"type":"hello","version":2}"#).unwrap(),
-            Frame::Hello { version: 2 }
+            serde_json::from_str::<Frame>(r#"{"type":"hello","version":3}"#).unwrap(),
+            Frame::Hello { version: 3 }
         ));
         assert!(
             serde_json::from_str::<Frame>(

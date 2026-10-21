@@ -159,6 +159,32 @@ class TerminalTest(unittest.TestCase):
             time.sleep(.03)
         self.fail("Failed runtime did not exit")
 
+    def test_api_key_is_masked_and_absent_from_transcript_and_history(self):
+        key = "sk-private-fixture-please-do-not-log"
+        self.send("/login\r")
+        self.until("API key · hidden")
+        self.send("\x1b[200~" + key + "\x1b[201~")
+        self.until("••••")
+        self.send("\r")
+        self.until("Key saved securely")
+        self.until("● Ready")
+        self.send("\x1b[A")
+        self.until("/login")
+        self.assertNotIn(key.encode(), self.buffer)
+        self.send("\x15")
+        self.finish()
+
+    def test_escape_cancels_key_entry_without_closing_session(self):
+        self.send("\x10")
+        self.until("Commands")
+        self.send("\r")
+        self.until("API key · hidden")
+        self.send("discard-this-key\x1b")
+        self.until("Key entry cancelled")
+        self.until("● Ready")
+        self.assertNotIn(b"discard-this-key", self.buffer)
+        self.finish()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,9 @@ Usage: dsh [--cwd PATH] [--resume SESSION]
   dsh --help                  Show this help
   dsh --version               Show the native frontend version
 
-In a session: /help, /session, /multiline, /exit.
+In a session: /login, /logout, /status, /model, /check, /sessions, /help.
+/login opens hidden API key input. Never pass keys as command arguments.
+Ctrl+P opens commands; /check sends a short billable API request.
 Ctrl+C stops the current turn; at the prompt it exits. Ctrl+D exits.
 Alt+Enter inserts a newline. F1 shows shortcuts, F2 opens diagnostics.
 PgUp/PgDn scroll; Ctrl+T expands tool details.

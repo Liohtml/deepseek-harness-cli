@@ -60,11 +60,12 @@ pnpm dsh headless --interactive "Inspect this project's test failures"
 pnpm dsh headless --interactive --session-id session-…
 ```
 
-Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, credentials, and persisted Sessions as one-shot tasks. The Session is flushed before its id and first prompt are displayed, so an empty conversation can also be resumed. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; the plain terminal does not display reasoning or partial token deltas. The native frontend streams text deltas and replaces each partial answer with its committed message; it never displays reasoning.
+Run from the project directory; the repository source command uses that directory as its workspace. Interactive mode requires terminal stdin and stdout, and rejects `--json` and the stdin marker `-`. It uses the same model, filesystem tools, sandbox, and persisted Sessions as one-shot tasks. The Session is flushed before its id and first prompt are displayed, so an empty conversation can also be resumed. Each turn is flushed before another prompt is accepted. Committed assistant messages, tool names, and tool arguments appear as the agent works; the plain terminal does not display reasoning or partial token deltas. The native frontend streams text deltas and replaces each partial answer with its committed message; it never displays reasoning.
 
 | Input | Action |
 |---|---|
 | `/help` | Show terminal commands |
+| `/login`, `/logout`, `/status`, `/model`, `/check`, `/sessions` | [Configure and discover from the native terminal](../../../native/cli/README.md#connect-and-configure) |
 | `/session` | Print the current id and resume command |
 | `/multiline` | Compose literal text over several lines; a single `.` submits it |
 | `/exit`, `/quit`, or Ctrl+D | End the conversation |
@@ -80,7 +81,7 @@ The terminal answers root-agent requests only. Timed questions retain their exis
 <a id="credentials"></a>
 ### Credentials
 
-The shipped headless profile disables the managed credential store and its authorization and DeepSeek account consumers. API-key routes use the launch environment, then `<invocation cwd>/.env`, then `$DSH_HOME/.env`. Keys and sign-ins saved by the GUI are ignored without changing their file. Providers that require a saved sign-in fail unless stored authentication is restored; external provider credential chains, such as AWS profiles, remain available.
+Interactive mode enables the managed credential store, including keys saved through the native `/login` command. Saved keys take precedence over environment fallbacks. One-shot jobs disable the managed store; authorization and DeepSeek account consumers stay disabled in both modes. One-shot API-key routes use the launch environment, then `<invocation cwd>/.env`, then `$DSH_HOME/.env`. Keys and sign-ins saved by the GUI are ignored without changing their file. Providers that require a saved sign-in fail unless stored authentication is restored; external provider credential chains, such as AWS profiles, remain available.
 
 Unset an empty launch variable to allow its `.env` fallback; an exported empty value shadows that fallback.
 

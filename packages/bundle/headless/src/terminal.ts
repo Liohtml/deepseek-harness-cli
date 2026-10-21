@@ -3,11 +3,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type { AskUserQuestionAnswerItem } from '@deepseek-ai/dsh-user-questions'
+import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import { TerminalInput, terminalText } from './terminal-input.ts'
+import { TerminalCommands } from './terminal-commands.ts'
 
 /** Process-facing terminal creation; tests substitute terminal IO without changing the Agent driver. */
 export const terminalInternals: ConversationIo = {
   event: undefined,
+  // Node types declare booleans, but pipe streams expose undefined at runtime.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-conversion
   isTTY: () => Boolean(process.stdin.isTTY && process.stdout.isTTY),
   write: (text: string): void => { process.stdout.write(text) },
   open: (onInterrupt: () => void, onClose: () => void): Pick<TerminalInput, 'ask' | 'close' | 'closed'> =>
@@ -17,12 +21,19 @@ export const terminalInternals: ConversationIo = {
 /** Structured presentation facts for the native frontend, separate from durable Session events. */
 export type TerminalEvent =
   | { type: 'session'; cwd: string; id: string; provider?: string | undefined; model?: string | undefined }
+  | { type: 'auth'; configured: boolean; source?: string | undefined }
   | { type: 'assistant_start' }
   | { type: 'assistant_delta' | 'assistant'; text: string }
   | { type: 'tool'; id: string; name: string; arguments: string }
   | { type: 'tool_result'; id: string; failed: boolean; text: string }
 
 /** Terminal IO used by the local readline UI or the native frontend transport. */
+export type ConversationInput = Pick<TerminalInput, 'ask' | 'close' | 'closed'> & {
+  /** Masked input, never echoed or recorded; unsupported frontends omit this capability. */
+  askSecret?: (prompt: string) => Promise<string | undefined>
+}
+
+/** Presentation and input capabilities of one interactive frontend. */
 export interface ConversationIo {
   /** Whether this endpoint can accept interactive input. */
   isTTY(): boolean
@@ -31,7 +42,7 @@ export interface ConversationIo {
   /** Optional structured presentation sink; absent uses the plain terminal transcript. */
   event?: ((event: TerminalEvent) => void) | undefined
   /** Open serialized input. @param onInterrupt - cancel or exit callback. @param onClose - input EOF callback. @returns input owner. */
-  open(onInterrupt: () => void, onClose: () => void): Pick<TerminalInput, 'ask' | 'close' | 'closed'>
+  open(onInterrupt: () => void, onClose: () => void): ConversationInput
 }
 
 const HELP = '/help  commands   /session  resume id   /multiline  enter a block   /exit  quit\nCtrl+C stops a running turn; at the prompt it exits. End a multiline prompt with a single dot.\n'
@@ -55,6 +66,7 @@ export async function runConversation(
     resumeCommand?: string | undefined
     provider?: string
     model?: string
+    selectModel?: (selection: ModelSelection) => void
   },
   run: (prompt: string) => Promise<number>,
 ): Promise<void> {
@@ -121,8 +133,10 @@ export async function runConversation(
     return { answers }
   })
   try {
+    const commands = new TerminalCommands(ctx, input, write, io.event, options, agent.id)
     if (io.event) io.event({ type: 'session', cwd: options.cwd, id: agent.id, provider: options.provider, model: options.model })
     else write(`\nDSH · terminal coding agent\nWorkspace: ${options.cwd}\nSession: ${agent.id}\n${HELP}\n`)
+    await commands.authStatus()
     let prompt = options.task
     while (!input.closed) {
       prompt ??= await input.ask('dsh> ')
@@ -130,6 +144,16 @@ export async function runConversation(
       const command = prompt.trim()
       if (command === '/exit' || command === '/quit') break
       if (command === '/help') write(HELP)
+      else if (await commands.handle(command)) { /* Configuration commands never become Agent messages. */ }
+      else if (command === '/check') {
+        write('Checking the selected model with a short API request…\n')
+        running = true
+        try {
+          if (await run('Connection check: reply with only OK. Do not use tools or inspect files.') !== 0) {
+            write('Connection check failed. Open diagnostics with F2; use /login to update your key.\n')
+          }
+        } finally { running = false }
+      }
       else if (command === '/session') write(`Session: ${agent.id}\nResume: ${options.resumeCommand ?? 'dsh headless --interactive --session-id'} '${agent.id.replaceAll("'", "'\\''")}'\n`)
       else if (command === '/multiline') {
         const lines: string[] = []
@@ -158,6 +182,6 @@ export async function runConversation(
     stopStream()
     stopApproval()
     stopOutput()
-    dispose()
+    await dispose()
   }
 }

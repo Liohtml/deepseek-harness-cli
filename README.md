@@ -49,11 +49,10 @@ Open your project and start a session:
 
 ```sh
 cd /path/to/your/project
-export DEEPSEEK_API_KEY='your-api-key'
 dsh
 ```
 
-You can also put `DEEPSEEK_API_KEY` in your project's `.env`. Keep the built checkout: the installed executable uses its Node.js runtime. Add the install directory to your shell's PATH configuration for future terminals. The [installation reference](native/cli/README.md) covers runtime paths and selecting the right `dsh` when multiple versions are installed.
+Inside `dsh`, run `/login` to enter your API key in a masked field, then `/model` to choose a model. Use `/check` for a short API connection test (normal charges apply). The key is stored in the private DSH credential file; see the [storage and security details](native/cli/README.md#connect-and-configure). You can also use `DEEPSEEK_API_KEY` from your environment or project's `.env`. Keep the built checkout: the installed executable uses its Node.js runtime. Add the install directory to your shell's PATH configuration for future terminals. The [installation reference](native/cli/README.md) covers runtime paths and selecting the right `dsh` when multiple versions are installed.
 
 **Want to explore the interface first?** After installation, run `dsh --demo` without an API key. Press `1` for the welcome screen, `2` for a sample conversation, `3` for a permission prompt, and Esc to exit.
 
@@ -83,6 +82,7 @@ Use `/session` to find your resume command and `/exit` to close the session. Res
 | Key | What it does |
 |---|---|
 | Enter | Send a message or answer |
+| Ctrl+P or `/` | Browse commands; ↑ / ↓ select, Enter runs |
 | Alt+Enter / Ctrl+J | Add a newline |
 | ↑ / ↓ | Browse prompt history |
 | PgUp / PgDn | Scroll the conversation |
