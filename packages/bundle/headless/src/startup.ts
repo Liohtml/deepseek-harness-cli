@@ -1,14 +1,16 @@
 /**
  * The one-shot app's command-line provider: it parses the task positional,
- * `--session-id`, `--json`, `--interactive`, and `--help`, then publishes
+ * Session identity, permission options, output mode, `--interactive`, and help, then publishes
  * {@link HEADLESS_STARTUP_SERVICE}. The runner is an ordinary consumer whose
  * lazy config waits for that service.
  * @module @deepseek-ai/dsh-headless/startup
  */
 
-import { Command, CommanderError } from 'commander'
+import { Command, CommanderError, Option } from 'commander'
+import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
+import { APPROVAL_POLICIES, type ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
 import { boundJsonLine } from './json-stream.ts'
 import { internals } from './startup-internals.ts'
 
@@ -33,6 +35,19 @@ export interface HeadlessStartupValues {
   interactive?: boolean
   /** Use the versioned stdio transport for the native terminal frontend. */
   terminalBridge?: boolean
+  /** Permission preset to apply before the task; absent preserves session policy. */
+  permissionMode?: string
+  /** Approval behavior applied after the permission preset; absent keeps the current policy. */
+  approvalPolicy?: ApprovalPolicy
+  /** Explicit absolute write grants for this invocation; absent adds no directories. */
+  additionalWritableRoots?: string[]
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Parsed arguments of this headless invocation. */
+    headlessStartup: HeadlessStartupValues
+  }
 }
 
 /**
@@ -48,6 +63,11 @@ function headlessCommand(): Command {
     .option('-i, --interactive', 'chat in the terminal with persisted follow-up turns')
     .option('--terminal-bridge', 'serve the native terminal frontend over JSON stdio')
     .option('--session-id <id>', 'adopt the persisted Session with this id; an unknown id is an error')
+    .option('--permission-mode <preset>', 'select a configured permission preset for this task, including on resume')
+    .addOption(new Option('--approval-policy <policy>', 'set approval behavior after selecting the permission preset')
+      .choices([...APPROVAL_POLICIES]))
+    .option('--add-dir <path>', 'allow an additional physical absolute directory under workspace-write (repeatable)',
+      (value: string, previous?: string[]) => [...previous ?? [], value])
     .argument('[task...]', 'the task text; multiple words are joined by spaces, and `-` reads stdin')
     .addHelpText('after', `
 Examples:
@@ -56,12 +76,14 @@ Examples:
   echo "run the tests" | dsh --profile headless   read the task from stdin
   dsh --profile headless --json "run the tests"   emit machine-readable run events
   dsh --profile headless --session-id session-… "continue"   resume an existing Session
+  dsh --profile headless --permission-mode workspace-write --add-dir /repo/.git "commit the fix"
+                                                        grant shared Git metadata for this task
 `)
 }
 
 /**
  * Whether the raw invocation asks for the machine-readable stream. The scan
- * stops at `--` and skips a `--session-id` value, so a literal `--json` used as
+ * stops at `--` and skips option operands, so a literal `--json` used as
  * an option value or a positional never installs the JSON error override.
  * @param argv - the invocation's raw arguments.
  * @returns whether `--json` is a real flag of this invocation.
@@ -71,7 +93,7 @@ function jsonRequested(argv: readonly string[]): boolean {
     const argument = argv[index]
     if (argument === '--') return false
     if (argument === '--json') return true
-    if (argument === '--session-id') index += 1
+    if (argument === '--session-id' || argument === '--permission-mode' || argument === '--approval-policy' || argument === '--add-dir') index += 1
   }
   return false
 }
@@ -108,7 +130,15 @@ export function apply(ctx: Context): void {
       program.error('error: a task is required, for example: dsh --profile headless "run the tests"')
     }
     const task = program.args.length === 0 ? undefined : joined
-    const options = program.opts<{ json?: boolean; sessionId?: string; interactive?: boolean; terminalBridge?: boolean }>()
+    const options = program.opts<{
+      json?: boolean
+      sessionId?: string
+      interactive?: boolean
+      terminalBridge?: boolean
+      permissionMode?: string
+      approvalPolicy?: ApprovalPolicy
+      addDir?: string[]
+    }>()
     if (options.terminalBridge && (options.interactive || options.json || task !== undefined)) {
       program.error('error: --terminal-bridge cannot be combined with --interactive, --json, or a task')
     }
@@ -127,12 +157,21 @@ export function apply(ctx: Context): void {
     if (sessionId !== undefined && sessionId.trim() === '') {
       program.error('error: --session-id requires a non-empty session id')
     }
+    if (options.permissionMode !== undefined && options.permissionMode.trim() === '') {
+      program.error('error: --permission-mode requires a non-empty preset name')
+    }
+    if (options.addDir?.some(path => !isAbsolute(path) || path.includes('\0')) === true) {
+      program.error('error: --add-dir requires an absolute directory path in the execution environment')
+    }
     ctx.provide(HEADLESS_STARTUP_SERVICE, {
       task,
       sessionId,
       json: options.json === true,
       ...(options.interactive ? { interactive: true } : {}),
       ...(options.terminalBridge ? { interactive: true, terminalBridge: true } : {}),
+      ...options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode.trim() },
+      ...options.approvalPolicy === undefined ? {} : { approvalPolicy: options.approvalPolicy },
+      ...options.addDir === undefined ? {} : { additionalWritableRoots: [...new Set(options.addDir)] },
     } satisfies HeadlessStartupValues)
   })
   parseCmdline(ctx, program)

@@ -1168,13 +1168,15 @@ describe('Session', () => {
         'detached',
       )).toThrow(/not a plain JSON record/)
     }
-    expect(() => Session.create(SessionId('header-invalid'), undefined, {
+    const nonJsonHeader: SessionHeader = {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('header-invalid'),
       createdAt: 123,
       isSeeded: false,
-      parentSession: 1n,
-    } as unknown as SessionHeader)).toThrow(/not losslessly JSON-serializable/)
+    }
+    Reflect.set(nonJsonHeader, 'parentSession', 1n)
+    expect(() => Session.create(SessionId('header-invalid'), undefined, nonJsonHeader))
+      .toThrow(/not losslessly JSON-serializable/)
     expect(() => Session.create(SessionId('header-invalid'), undefined, {
       version: SESSION_FORMAT_VERSION,
       id: SessionId('other'),
@@ -1513,9 +1515,9 @@ describe('SessionStore', () => {
 
     await fiber.dispose()
     expect(ctx.sessions.get(SessionId('scoped'))).toBeUndefined()
-    session.append('user/message', createUserMessage({
+    expect(() => session.append('user/message', createUserMessage({
       content: [{ type: 'text', text: 'late' }], source: { kind: 'user' },
-    }), { surfaceOp: 'append' })
+    }), { surfaceOp: 'append' })).toThrow('cannot append outside a SessionStore')
     expect(observed).toBe(0)
   })
 
@@ -1763,6 +1765,9 @@ describe('SessionStore', () => {
     const detachUnannounced = ctx.sessions.enter(unannounced)
     detachUnannounced()
     expect(heard).toEqual([])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(warnings).toEqual([])
 
     const announced = ctx.sessions.prepare(SessionId('contained-disposal'))
     const detach = ctx.sessions.enter(announced)

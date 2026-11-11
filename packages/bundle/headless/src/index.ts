@@ -15,11 +15,12 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type { Agent, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { APPROVAL_POLICIES, setApprovalPolicy, type ApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
@@ -31,6 +32,10 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-cmdline'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-subagent'
+// Optional service peers stay type-only so profiles can omit their packages.
+import type {} from '@deepseek-ai/dsh-permission-presets'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
+import type {} from './startup.ts'
 import { internals } from './runner-internals.ts'
 import { projectJsonRun, boundJsonLine } from './json-stream.ts'
 import { runConversation } from './terminal.ts'
@@ -54,6 +59,10 @@ export interface Config {
   interactive?: boolean
   /** Native terminal stdio transport; requires interactive and excludes task/json. */
   terminalBridge?: boolean
+  /** Permission preset applied before the task; an explicit CLI flag takes precedence. Omission keeps current policy. */
+  permissionMode?: string
+  /** Approval behavior applied after preset selection; an explicit CLI flag takes precedence. Omission keeps current policy. */
+  approvalPolicy?: ApprovalPolicy
 }
 
 export const Config: z<Config> = z.object({
@@ -62,6 +71,8 @@ export const Config: z<Config> = z.object({
   json: z.boolean(),
   interactive: z.boolean(),
   terminalBridge: z.boolean(),
+  permissionMode: z.string(),
+  approvalPolicy: z.union([...APPROVAL_POLICIES]),
 })
 
 /** Outcome of one owned run interval. */
@@ -78,7 +89,7 @@ interface HeadlessIo {
   exit(code: number): void
 }
 
-/** Aggregate the last assistant text and turn outcome in one owned interval. */
+/** Aggregate the interval's last assistant text; only its final turn can establish completion. */
 function summarize(session: Session, firstSeq: SessionLogOffset): RunOutcome {
   let started = false
   let text = ''
@@ -92,6 +103,7 @@ function summarize(session: Session, firstSeq: SessionLogOffset): RunOutcome {
     }
     if (event.type === 'turn/start') {
       started = true
+      reason = undefined
       continue
     }
     if (!started) continue
@@ -177,7 +189,6 @@ function streamReasoning(
 interface AdoptableHeader {
   cwd?: string | undefined
   origin?: 'subagent' | undefined
-  parentSession?: SessionId | undefined
   agentPreset?: string | undefined
 }
 
@@ -228,8 +239,8 @@ function assertAdoptable(header: AdoptableHeader, events: Iterable<SessionEvent>
       `session "${sessionId}" runs under agent preset "${preset}", which the one-shot runner does not compose`,
     )
   }
-  if (header.origin === 'subagent' || header.parentSession !== undefined) {
-    throw new Error(`session "${sessionId}" is a subagent or forked session and cannot be driven directly`)
+  if (header.origin === 'subagent') {
+    throw new Error(`session "${sessionId}" is a subagent session and cannot be driven directly`)
   }
   if (header.cwd === undefined) {
     throw new Error(`session "${sessionId}" recorded no working directory, so it cannot be adopted`)
@@ -256,8 +267,8 @@ async function resolveAgent(
   ctx: Context,
   agents: Context['agents'],
   sessionId: SessionId,
-  agentOptions: { provider: string; model: string },
-  setup: (agentCtx: Context) => void,
+  agentOptions: AgentOptions,
+  setup: (agentCtx: Context, agent: Agent) => void | Promise<void>,
   cwd: string,
 ): Promise<Agent> {
   // Resuming promises the caller a log a later process can continue. Without a
@@ -314,7 +325,7 @@ function fail(io: HeadlessIo, error: unknown, json: boolean): void {
  * Run one task through one Agent and request process exit.
  * Live Agent failures require a later durable terminal before a recovered run can succeed.
  * @param ctx - plugin context carrying the Agent, default model, Session, and launcher IO services.
- * @param config - task, optional exact Session identity, and output mode.
+ * @param config - task, exact Session identity, output mode, permission preset, and approval policy.
  * @param io - process-facing effects.
  */
 async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> {
@@ -339,6 +350,26 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   if (config.terminalBridge && (!config.interactive || config.json || config.task !== undefined)) {
     throw new Error('terminalBridge requires interactive mode without a task or JSON run output')
   }
+  const startup = ctx.get('headlessStartup')
+  const permissionMode = startup?.permissionMode ?? config.permissionMode
+  const approvalPolicy = startup?.approvalPolicy ?? config.approvalPolicy
+  const approval = ctx.get('approval')
+  const permissions = ctx.get('permissionPresets')
+  if (permissionMode !== undefined) {
+    if (permissions === undefined) throw new Error('headless --permission-mode requires the permissionPresets service')
+    permissions.resolve(permissionMode)
+  }
+  if (approvalPolicy !== undefined && approval === undefined) {
+    throw new Error('headless --approval-policy requires the approval service')
+  }
+  const requestedRoots = startup?.additionalWritableRoots
+  if (requestedRoots !== undefined && requestedRoots.length > 0) {
+    const policy = ctx.get('sandboxPolicy')
+    if (policy === undefined || requestedRoots.some(root => !policy.additionalWritableRoots?.includes(root))) {
+      throw new Error('headless --add-dir requires the sandbox-policy row to include headlessStartup.additionalWritableRoots; check the profile overlays')
+    }
+  }
+
   const task = config.interactive ? config.task ?? '' : config.task === undefined || config.task === '-'
     ? await internals.readStdin()
     : config.task
@@ -347,14 +378,24 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
   }
 
   const selection = defaultModel.currentSelection()
-  const agentOptions = { provider: selection.provider, model: selection.model }
+  const agentOptions: AgentOptions = { ...selection }
   // This bundle composes no preset roster, so the model-facing rows sit in the
   // host plane and the agent reads them from the global layer. A deployment
   // that DOES configure one has to join it here first
   // (@deepseek-ai/dsh-agent-preset-registry README, "Composing a child agent").
-  const selected: ModelSelectionRef = { current: selection, assembled: undefined }
-  const setup = (agentCtx: Context): void => {
-    installModelSelection(agentCtx, selected)
+  const setup = (agentCtx: Context, agent: Agent): void => {
+    // A resumed Session continues with this run's configured model.
+    if (config.sessionId !== undefined) {
+      const previous = agent.model.current()
+      const configured = { ...selection }
+      if (configured.reasoningEffort === undefined && previous !== undefined
+        && previous.provider === configured.provider && previous.model === configured.model
+        && previous.reasoningEffort !== undefined) {
+        configured.reasoningEffort = previous.reasoningEffort
+      }
+      agent.model.select(configured)
+    }
+    installModelSelection(agentCtx)
   }
   const sessionId = brandString<SessionId>(config.sessionId ?? `session-${randomUUID()}`)
   const fs = ctx.get('fs')
@@ -374,6 +415,10 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     // re-read the log the runner holds before submitting the task.
     assertAdoptable(agent.session.header, liveEvents(agent.session), sessionId, cwd)
   }
+  if (permissionMode !== undefined && permissions !== undefined) permissions.set(agent.session, permissionMode)
+  if (approvalPolicy !== undefined && approval?.overrideOf(agent.session) !== approvalPolicy) {
+    setApprovalPolicy(agent.session, approvalPolicy)
+  }
   if (config.interactive) {
     // Materialize even an empty Session before the terminal publishes its resume id.
     await sessions.flush(agent.session)
@@ -381,7 +426,7 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     await runConversation(ctx, agent, {
       cwd, task, io: terminalIo, resumeCommand: config.terminalBridge ? 'dsh --resume' : undefined,
       provider: selection.provider, model: selection.model,
-      selectModel: (next) => { selected.current = next },
+      selectModel: (next) => { agent.model.select(next) },
     }, async (prompt) => {
       return runTask(ctx, agent, prompt, config, io, cwd)
     })
@@ -416,7 +461,7 @@ async function runTask(ctx: Context, agent: Agent, task: string, config: Config,
         await agent.whenIdle()
         const idleSeq = agent.session.seq
         // Child settlement can wake the parent before the child wait observes it.
-        if (!await subagents?.waitForChildren(agent)
+        if (!await subagents?.waitForTreeWork(agent)
           && agent.status === 'idle' && agent.session.seq === idleSeq) break
       }
     } finally {
@@ -426,7 +471,7 @@ async function runTask(ctx: Context, agent: Agent, task: string, config: Config,
     if (failure !== undefined) throw failure.error
     const outcome = summarize(agent.session, firstSeq)
     if (projection === undefined && !config.interactive) io.stdout.write(outcome.text + '\n')
-    else projection?.finish(outcome.text)
+    else projection?.finish(outcome.text, outcome.reason)
     if (outcome.reason?.kind === 'error') {
       io.stderr.write(`dsh: ${outcome.reason.error.code}: ${outcome.reason.error.message}\n`)
     }

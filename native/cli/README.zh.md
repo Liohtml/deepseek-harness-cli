@@ -25,6 +25,7 @@ cd /path/to/project
 dsh
 dsh --resume session-…
 dsh --cwd /path/to/another-project
+dsh --permission-mode workspace-write --add-dir /path/to/shared-output
 dsh headless "run the tests"
 dsh web
 dsh --demo
@@ -64,6 +65,23 @@ dsh --demo
 | `/sessions` | 列出当前项目最多十个已保存会话及恢复命令 |
 
 不要将密钥作为斜杠命令参数。`/login` 管理 `DEEPSEEK_API_KEY`；自定义提供者凭据引用仍通过现有环境或设置配置。保存密钥不代表已验证，只有 API 请求成功才能验证。模型选择仅在当前进程有效；后续启动使用配置的默认模型。
+
+<a id="superagent"></a>
+
+## Superagent 服务
+
+`dsh superagent install` 会把 [dsh-superagent 研究原型](https://github.com/deepseek-ai/dsh-superagent-prototype)（面向单个 GitHub 仓库的主动式 agent）安装到独立的 `superagent` profile。它仅支持 Linux 和 macOS，需要 git、pnpm、Python 3.8+、tmux 和 GitHub CLI。该命令在 `$DSH_HOME/superagent/src` 检出固定修订并构建，在 profile 不存在时从 Web 模板创建它，然后链接该 bundle。新建的 profile 在 `127.0.0.1:3082` 提供面板，并把状态保存在 `$DSH_HOME/state/superagent`；已有的 profile 保留其配置。
+
+```sh
+dsh superagent install
+dsh superagent start
+dsh superagent status
+dsh superagent stop
+```
+
+`start`、`stop`、`restart` 和 `status` 运行该 bundle 的服务脚本并返回其退出码：0 表示正常运行，1 表示未运行或无法访问，2 表示某个组件报告错误，3 表示等待设置。其他 `dsh superagent …` 调用会直接启动该 profile。安装后，按检出目录中的 `SETUP.md` 配置 agent 的 GitHub 账号、允许的请求者和执行设置。Worker 以你的操作系统用户身份拥有完全访问权限；需要隔离时请使用专用的操作系统账号。
+
+安装程序会放宽服务脚本的进程检查，使其接受 `MainThread`，即 Node.js 24 在 Linux 上报告的命令名。否则脚本会把正在运行的服务报告为已停止。
 
 <a id="development"></a>
 

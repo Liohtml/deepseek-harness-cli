@@ -61,7 +61,11 @@ impl Drop for Screen {
     }
 }
 
-pub fn run(resume: Option<OsString>, demo: bool) -> Result<u8, Box<dyn std::error::Error>> {
+pub fn run(
+    resume: Option<OsString>,
+    policy: Vec<OsString>,
+    demo: bool,
+) -> Result<u8, Box<dyn std::error::Error>> {
     let mut app = if demo {
         App::preview(0)
     } else {
@@ -72,7 +76,7 @@ pub fn run(resume: Option<OsString>, demo: bool) -> Result<u8, Box<dyn std::erro
     let mut runtime = if demo {
         None
     } else {
-        Some(Runtime::start(resume)?)
+        Some(Runtime::start(resume, policy)?)
     };
     let result = interact(&mut runtime, &mut screen, &mut app);
     app.phase = Phase::Closing;
