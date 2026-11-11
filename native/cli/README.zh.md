@@ -70,7 +70,7 @@ dsh --demo
 
 ## Superagent 服务
 
-`dsh superagent install` 会把 [dsh-superagent 研究原型](https://github.com/deepseek-ai/dsh-superagent-prototype)（面向单个 GitHub 仓库的主动式 agent）安装到独立的 `superagent` profile。它需要 git、pnpm、Python 3.8+、tmux 和 GitHub CLI。该命令在 `$DSH_HOME/superagent/src` 检出固定修订并构建，在 profile 不存在时从 Web 模板创建它，然后链接该 bundle。新建的 profile 在 `127.0.0.1:3082` 提供面板，并把状态保存在 `$DSH_HOME/state/superagent`；已有的 profile 保留其配置。
+`dsh superagent install` 会把 [dsh-superagent 研究原型](https://github.com/deepseek-ai/dsh-superagent-prototype)（面向单个 GitHub 仓库的主动式 agent）安装到独立的 `superagent` profile。它仅支持 Linux 和 macOS，需要 git、pnpm、Python 3.8+、tmux 和 GitHub CLI。该命令在 `$DSH_HOME/superagent/src` 检出固定修订并构建，在 profile 不存在时从 Web 模板创建它，然后链接该 bundle。新建的 profile 在 `127.0.0.1:3082` 提供面板，并把状态保存在 `$DSH_HOME/state/superagent`；已有的 profile 保留其配置。
 
 ```sh
 dsh superagent install

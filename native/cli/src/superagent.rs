@@ -18,21 +18,64 @@ const REPOSITORY: &str = "https://github.com/deepseek-ai/dsh-superagent-prototyp
 const REVISION: &str = "8c32a9dc5d72c033816c6a8110b37f40cf94fba4";
 const PROFILE: &str = "superagent";
 const PORT: u16 = 3082;
+const SERVICE_SCRIPT: &str = "scripts/dsh-superagent";
 
 type Failure = Box<dyn std::error::Error>;
 
-fn home() -> Result<PathBuf, Failure> {
-    if let Some(home) = env::var_os("DSH_HOME").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(home));
-    }
-    let user = env::var_os("HOME")
+fn user_home() -> Result<PathBuf, Failure> {
+    env::var_os("HOME")
         .or_else(|| env::var_os("USERPROFILE"))
-        .ok_or("set DSH_HOME or HOME to locate the DSH home directory")?;
-    Ok(PathBuf::from(user).join(".dsh"))
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "set DSH_HOME or HOME to locate the DSH home directory".into())
+}
+
+/// Resolve the DSH home as the runtime does: a blank `DSH_HOME` is unset, a leading `~` is the user's home,
+/// and the result is absolute.
+fn resolve_home(configured: Option<&str>, user: &Path) -> PathBuf {
+    match configured.map(str::trim).filter(|value| !value.is_empty()) {
+        None => user.join(".dsh"),
+        Some("~") => user.to_path_buf(),
+        Some(value) => match value.strip_prefix("~/") {
+            Some(rest) => user.join(rest),
+            None => PathBuf::from(value),
+        },
+    }
+}
+
+fn home() -> Result<PathBuf, Failure> {
+    let configured = match env::var_os("DSH_HOME") {
+        Some(value) => Some(
+            value
+                .into_string()
+                .map_err(|_| "DSH_HOME must be valid UTF-8 for the superagent profile")?,
+        ),
+        None => None,
+    };
+    let needs_user = configured
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|value| value.is_empty() || value == "~" || value.starts_with("~/"));
+    let user = if needs_user {
+        user_home()?
+    } else {
+        PathBuf::new()
+    };
+    Ok(std::path::absolute(resolve_home(
+        configured.as_deref(),
+        &user,
+    ))?)
 }
 
 fn source(home: &Path) -> PathBuf {
     home.join("superagent").join("src")
+}
+
+/// Whether a profile patch already carries the bundle's machine configuration entry.
+fn configures_superagent(patch: &str) -> bool {
+    patch
+        .lines()
+        .any(|line| line.trim() == "- id: dsh-superagent")
 }
 
 /// Render `value` as a single-quoted YAML scalar.
@@ -85,8 +128,24 @@ fn checkout(source: &Path) -> Result<(), Failure> {
         if let Some(parent) = source.parent() {
             fs::create_dir_all(parent)?;
         }
-        step("git", &["clone".as_ref(), REPOSITORY.as_ref(), dir], None)?;
+        step(
+            "git",
+            &["clone".as_ref(), "--".as_ref(), REPOSITORY.as_ref(), dir],
+            None,
+        )?;
     } else {
+        // The installer edits this tracked file; restore it so a newer pinned revision can replace it.
+        step(
+            "git",
+            &[
+                "-C".as_ref(),
+                dir,
+                "checkout".as_ref(),
+                "--".as_ref(),
+                SERVICE_SCRIPT.as_ref(),
+            ],
+            None,
+        )?;
         step(
             "git",
             &["-C".as_ref(), dir, "fetch".as_ref(), "origin".as_ref()],
@@ -153,28 +212,41 @@ fn install() -> Result<u8, Failure> {
     let source = source(&home);
     let profile = home.join("profiles").join(PROFILE);
     checkout(&source)?;
-    accept_node_thread_name(&source.join("scripts").join("dsh-superagent"))?;
+    accept_node_thread_name(&source.join(SERVICE_SCRIPT))?;
     step(
         "pnpm",
         &["install".as_ref(), "--frozen-lockfile".as_ref()],
         Some(&source),
     )?;
     step("pnpm", &["build".as_ref()], Some(&source))?;
-    // Creating the profile from the Web template replaces an existing one, so only a missing profile is created.
-    let created = !profile.exists();
+    let state = home.join("state").join(PROFILE);
+    let patch = profile_patch(&state)?;
+    let patch_file = profile.join("cordis.patch.yml");
+    // An interrupted earlier install can leave a profile without machine configuration, so the patch file decides.
+    let existing = fs::read_to_string(&patch_file).unwrap_or_default();
+    let created = existing.trim().is_empty();
     if created {
-        runtime_step(
-            &[
-                PROFILE.as_ref(),
-                "--from-default-profile".as_ref(),
-                "web".as_ref(),
-                "--dump-config".as_ref(),
-            ],
-            true,
-        )?;
-        let state = home.join("state").join(PROFILE);
+        // Creating the profile from the Web template replaces an existing one, so only a missing profile is created.
+        if !profile.exists() {
+            runtime_step(
+                &[
+                    PROFILE.as_ref(),
+                    "--from-default-profile".as_ref(),
+                    "web".as_ref(),
+                    "--dump-config".as_ref(),
+                ],
+                true,
+            )?;
+        }
         fs::create_dir_all(&state)?;
-        fs::write(profile.join("cordis.patch.yml"), profile_patch(&state)?)?;
+        fs::write(&patch_file, patch)?;
+    } else if !configures_superagent(&existing) {
+        return Err(format!(
+            "{} has no `dsh-superagent` entry; add the entries from {} and run install again",
+            patch_file.display(),
+            source.join("examples/profile.cordis.patch.yml").display()
+        )
+        .into());
     }
     let mut link = OsString::from("link:");
     link.push(&source);
@@ -211,12 +283,12 @@ fn install() -> Result<u8, Failure> {
 fn service_path() -> Option<OsString> {
     let exe = env::current_exe().ok()?;
     let mut entries = vec![exe.parent()?.to_path_buf()];
-    entries.extend(env::split_paths(&env::var_os("PATH")?));
+    entries.extend(env::split_paths(&env::var_os("PATH").unwrap_or_default()));
     env::join_paths(entries).ok()
 }
 
 fn service(args: Vec<OsString>) -> Result<u8, Failure> {
-    let script = source(&home()?).join("scripts").join("dsh-superagent");
+    let script = source(&home()?).join(SERVICE_SCRIPT);
     if !script.is_file() {
         return Err("dsh-superagent is not installed; run `dsh superagent install` first".into());
     }
@@ -236,6 +308,9 @@ fn service(args: Vec<OsString>) -> Result<u8, Failure> {
 
 /// Run one management verb; `args` starts with the verb.
 pub fn run(args: Vec<OsString>) -> Result<u8, Failure> {
+    if !cfg!(unix) {
+        return Err("dsh superagent needs tmux and a POSIX process table; it is supported on Linux and macOS only".into());
+    }
     match args.first().and_then(|verb| verb.to_str()) {
         Some("install") if args.len() == 1 => install(),
         Some("install") => Err("dsh superagent install takes no options".into()),
@@ -252,6 +327,25 @@ mod tests {
         let patch = profile_patch(Path::new("/home/it's me/.dsh/state/superagent")).unwrap();
         assert!(patch.contains("stateDir: '/home/it''s me/.dsh/state/superagent'\n"));
         assert!(patch.contains("host: 127.0.0.1\n    port: 3082\n"));
+    }
+
+    #[test]
+    fn home_resolution_matches_the_runtime() {
+        let user = Path::new("/u");
+        assert_eq!(resolve_home(None, user), PathBuf::from("/u/.dsh"));
+        assert_eq!(resolve_home(Some("  "), user), PathBuf::from("/u/.dsh"));
+        assert_eq!(resolve_home(Some("~/x"), user), PathBuf::from("/u/x"));
+        assert_eq!(resolve_home(Some(" /d "), user), PathBuf::from("/d"));
+    }
+
+    #[test]
+    fn only_a_patch_with_the_bundle_entry_counts_as_configured() {
+        assert!(configures_superagent(
+            &profile_patch(Path::new("/s")).unwrap()
+        ));
+        assert!(!configures_superagent(
+            "- id: webserver\n  config:\n    port: 1\n"
+        ));
     }
 
     #[test]

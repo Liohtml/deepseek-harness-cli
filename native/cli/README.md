@@ -70,7 +70,7 @@ Never pass keys as slash-command arguments. `/login` manages `DEEPSEEK_API_KEY`;
 
 ## Superagent service
 
-`dsh superagent install` installs the [dsh-superagent research prototype](https://github.com/deepseek-ai/dsh-superagent-prototype), a proactive agent for one GitHub repository, in its own `superagent` profile. It needs git, pnpm, Python 3.8+, tmux, and the GitHub CLI. The command checks out a pinned revision under `$DSH_HOME/superagent/src`, builds it, creates the profile from the Web template when it does not exist, and links the bundle. A new profile serves its panel on `127.0.0.1:3082` and keeps state in `$DSH_HOME/state/superagent`; an existing profile keeps its configuration.
+`dsh superagent install` installs the [dsh-superagent research prototype](https://github.com/deepseek-ai/dsh-superagent-prototype), a proactive agent for one GitHub repository, in its own `superagent` profile. It runs on Linux and macOS and needs git, pnpm, Python 3.8+, tmux, and the GitHub CLI. The command checks out a pinned revision under `$DSH_HOME/superagent/src`, builds it, creates the profile from the Web template when it does not exist, and links the bundle. A new profile serves its panel on `127.0.0.1:3082` and keeps state in `$DSH_HOME/state/superagent`; an existing profile keeps its configuration.
 
 ```sh
 dsh superagent install
