@@ -25,6 +25,7 @@ cd /path/to/project
 dsh
 dsh --resume session-…
 dsh --cwd /path/to/another-project
+dsh --permission-mode workspace-write --add-dir /path/to/shared-output
 dsh headless "run the tests"
 dsh web
 dsh --demo
@@ -64,6 +65,23 @@ Run `/login` inside `dsh` and paste your DeepSeek API key into the masked field.
 | `/sessions` | List up to ten saved sessions in this project with resume commands |
 
 Never pass keys as slash-command arguments. `/login` manages `DEEPSEEK_API_KEY`; custom provider credential references remain configured through their existing environment or settings. A saved key is not validated until an API request succeeds. Model selection lasts for the current process; future launches use the configured default.
+
+<a id="superagent"></a>
+
+## Superagent service
+
+`dsh superagent install` installs the [dsh-superagent research prototype](https://github.com/deepseek-ai/dsh-superagent-prototype), a proactive agent for one GitHub repository, in its own `superagent` profile. It needs git, pnpm, Python 3.8+, tmux, and the GitHub CLI. The command checks out a pinned revision under `$DSH_HOME/superagent/src`, builds it, creates the profile from the Web template when it does not exist, and links the bundle. A new profile serves its panel on `127.0.0.1:3082` and keeps state in `$DSH_HOME/state/superagent`; an existing profile keeps its configuration.
+
+```sh
+dsh superagent install
+dsh superagent start
+dsh superagent status
+dsh superagent stop
+```
+
+`start`, `stop`, `restart`, and `status` run the bundle's service script and return its exit code: 0 running, 1 not running or unreachable, 2 a component reports an error, 3 waiting for setup. Any other `dsh superagent …` invocation launches the profile directly. After installation, follow the checkout's `SETUP.md` for the agent's GitHub account, the allowed requesters, and execution settings. Workers run with full access as your OS user; use a dedicated OS account for isolation.
+
+The installer widens the service script's process check to accept `MainThread`, the command name Node.js 24 reports on Linux. Without it the script reports a running service as stopped.
 
 <a id="development"></a>
 

@@ -80,7 +80,7 @@ pub enum Event {
     Eof,
 }
 
-fn command() -> Result<Command, Box<dyn std::error::Error>> {
+pub fn command() -> Result<Command, Box<dyn std::error::Error>> {
     let runtime = env::var_os("DSH_RUNTIME_JS")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -123,9 +123,13 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn start(resume: Option<OsString>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn start(
+        resume: Option<OsString>,
+        policy: Vec<OsString>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut command = command()?;
         command.args(["headless", "--terminal-bridge"]);
+        command.args(policy);
         if let Some(id) = resume {
             command.arg("--session-id").arg(id);
         }
