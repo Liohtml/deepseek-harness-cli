@@ -1,4 +1,7 @@
 /** Producer-to-UI regression for shell results bounded by the real spill policy. */
+import { executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -11,7 +14,8 @@ import { SpillLocator, SpillStore, type SaveTextSpill, type SpillRef } from '@de
 import * as SpillPolicy from '@deepseek-ai/dsh-spill-policy'
 import { formatSpillNotice } from '@deepseek-ai/dsh-spill-policy/notice'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { PartialArguments } from '@deepseek-ai/dsh-util-values'
 import { describe, expect, it } from 'vitest'
 import { isSpilledShellCall, terminalCardModel } from '../src/client/tool/models/terminal-card-model.ts'
@@ -40,7 +44,8 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
   const ctx = new Context()
   try {
     await ctx.plugin(SystemPrompt)
-    await ctx.plugin(ToolRuntime, { mode: nested ? 'ptc' : 'native' })
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin((nested ? 'ptc' : 'native') === 'ptc' ? PtcToolExecutor : NativeToolExecutor)
     ctx.provide('workingDirectory', { ensure: async () => process.cwd() })
     await ctx.plugin(MemorySpillStore)
     await ctx.plugin(SpillPolicy, { maxInlineTokens })
@@ -57,7 +62,7 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
           if (tool === undefined) throw new Error('missing fixture binding')
           const blocks = await tool(shellArgs)
           expect(blocks).toEqual([{ type: 'text', text }])
-          return { logs: [], value: true }
+          return { output: [{ type: 'text', text: 'true' }] }
         }
       }
       await ctx.plugin(BindingRuntime)
@@ -75,13 +80,13 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
     // Nested PTC registers retained-environment cleanup on the owning context.
     const agent = { ctx, session } as Agent
     const callId = ToolCallId('shell-call')
-    const result = await ctx.tools.execute({
+    const result = await executeModelToolFixture(ctx, {
       callId,
       agent,
       signal: new AbortController().signal,
       name: nested ? 'run_code' : name,
       arguments: nested ? {
-        code: `const blocks = await tools.${name}(${JSON.stringify(shellArgs)}); return blocks[0].text === ${JSON.stringify(text)};`,
+        code: `const blocks = await tools.${name}(${JSON.stringify(shellArgs)}); inspect(blocks[0].text === ${JSON.stringify(text)});`,
         description: 'Dispatch shell fixture through the tool pipeline',
       } : shellArgs,
     })
@@ -90,7 +95,7 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
 
     let block: ToolResultNode
     if (nested) {
-      expect(result.value).toMatchObject({ result: true })
+      expect(result.value).toMatchObject({ logs: ['true'] })
       const dispatches = session.snapshotEvents().filter(event => event.type === 'tool/ptc-dispatch')
       expect(dispatches).toHaveLength(1)
       const event = dispatches[0]!

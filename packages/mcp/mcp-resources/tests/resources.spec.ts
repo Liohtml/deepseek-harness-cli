@@ -1,8 +1,11 @@
+import { executeToolFixture, executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import { setImmediate as nextEventLoopTurn } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineTool, type Config as ToolConfig } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { bindScopeParent, createScope, type Scope } from '@deepseek-ai/dsh-scope'
@@ -15,7 +18,7 @@ class BindingProbe extends PtcRuntime {
   readonly language = 'typescript'
   readonly isolation = 'in-process-test'
   behavior: (spec: PtcRunSpec) => Promise<PtcRunResult> = async spec => ({
-    logs: [], value: Object.keys(spec.bindings[0]!.functions).sort(),
+    output: [{ type: 'text', text: JSON.stringify(Object.keys(spec.bindings[0]!.functions).sort()) }],
   })
 
   resolve(request: PtcRunRequest): PtcRunSpec {
@@ -32,11 +35,12 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(ctx => ctx.fiber.dispose()))
 })
 
-async function setup(mode: ToolConfig['mode'] = 'native') {
+async function setup(mode: ('native' | 'ptc') = 'native') {
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(SystemPrompt)
-  await ctx.plugin(ToolRuntime, { mode })
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(mode === 'ptc' ? PtcToolExecutor : NativeToolExecutor)
   if (mode !== 'native') await ctx.plugin(BindingProbe)
   await ctx.plugin(McpResources)
   return ctx
@@ -55,7 +59,8 @@ function visibleResourceTools(ctx: Context, agent?: Agent): string[] {
 }
 
 function call(ctx: Context, name: string, args: unknown, agent?: Agent) {
-  return ctx.tools.execute({
+  const execute = name === 'run_code' ? executeModelToolFixture : executeToolFixture
+  return execute(ctx, {
     name, arguments: args, callId: ToolCallId('resource-test'),
     signal: new AbortController().signal,
     ...agent === undefined ? {} : { agent },
@@ -76,7 +81,7 @@ describe('MCP resource tools', () => {
     }
     if (mode !== 'native') {
       expect(await call(ctx, 'run_code', { code: 'inspect bindings', description: 'Inspect bindings' }))
-        .toMatchObject({ isError: false, value: { result: [] } })
+        .toMatchObject({ isError: false, value: { logs: ['[]'] } })
     }
   })
 
@@ -90,6 +95,8 @@ describe('MCP resource tools', () => {
       inner.mcpResources.register('second', { request })
     } })
     expect(visibleResourceTools(ctx)).toEqual([...resourceToolNames].sort())
+    expect(resourceToolNames.map(name => ctx.tools.get(name)?.isConcurrencySafe?.({ server: 'first', uri: 'docs://text' })))
+      .toEqual(resourceToolNames.map(() => true))
     await first.dispose()
     expect(visibleResourceTools(ctx)).toEqual([...resourceToolNames].sort())
     expect((await call(ctx, 'list_mcp_resources', { server: 'second' })).isError).toBe(false)
@@ -206,15 +213,15 @@ describe('MCP resource tools', () => {
       expect(await binding({ server: 'docs' })).toEqual({ resources: [] })
       remove()
       await expect(binding({ server: 'docs' })).rejects.toThrow('unknown tool')
-      return { logs: [] }
+      return { output: [] }
     }
     const result = await call(ctx, 'run_code', { code: 'invoke and remove provider', description: 'Use resource binding' })
     expect(result.isError).toBe(false)
     expect(request).toHaveBeenCalledOnce()
     expect(renderPrompt(await ctx.systemPrompt.assemble())).not.toContain('mcp')
-    runtime.behavior = async spec => ({ logs: [], value: Object.keys(spec.bindings[0]!.functions) })
+    runtime.behavior = async spec => ({ output: [{ type: 'text', text: JSON.stringify(Object.keys(spec.bindings[0]!.functions)) }] })
     expect(await call(ctx, 'run_code', { code: 'inspect bindings', description: 'Inspect bindings' }))
-      .toMatchObject({ isError: false, value: { result: [] } })
+      .toMatchObject({ isError: false, value: { logs: ['[]'] } })
   })
 
   it('retains tools for a configured provider while its requests fail', async () => {
@@ -283,6 +290,7 @@ describe('MCP resource tools', () => {
     roots.push(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     const fiber = await ctx.plugin(McpResources)
     ctx.mcpResources.register('docs', { request: async () => ({ resources: [] }) })
     expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain('MCP resource servers')
