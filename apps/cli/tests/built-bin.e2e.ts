@@ -358,11 +358,13 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
     }
   }, SPAWN_TIMEOUT_MS + 5_000)
 
-  it('requires a profile and rejects removed flags', async () => {
-    const bare = await runBuiltBin()
-    expect(bare.code).toBe(1)
-    expect(bare.stdout).toBe('')
-    expect(bare.stderr).toContain('--profile <name> is required')
+  it('requires a profile for launcher options and rejects removed flags', async () => {
+    // Bare `dsh` starts the interactive headless profile, so a launcher option
+    // without a profile is the profile-less invocation.
+    const profileless = await runBuiltBin(['--dump-config'])
+    expect(profileless.code).toBe(1)
+    expect(profileless.stdout).toBe('')
+    expect(profileless.stderr).toContain('--profile <name> is required')
     const help = await runBuiltBin(['--help'])
     expect(help.code).toBe(0)
     await expect(help.stdout).toMatchFileSnapshot('./expected/launcher-help.txt')

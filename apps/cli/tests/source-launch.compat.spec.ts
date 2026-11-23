@@ -24,8 +24,10 @@ describe('dsh SOURCE launcher (node --import tsx/esm)', () => {
     expect(rootPackage.scripts?.dsh).toBe('node --import tsx/esm apps/cli/src/bin.ts')
   })
 
-  it('boots the source entry and requires a profile', async () => {
-    const result = await execa(process.execPath, ['--import', 'tsx/esm', dshSourceBin], {
+  it('boots the source entry and requires a profile for launcher options', async () => {
+    // Bare `dsh` starts the interactive headless profile, so a launcher option
+    // without a profile is the profile-less invocation.
+    const result = await execa(process.execPath, ['--import', 'tsx/esm', dshSourceBin, '--dump-config'], {
       cwd: repoRoot,
       input: '',
       timeout: 25_000,

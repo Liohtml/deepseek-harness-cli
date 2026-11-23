@@ -1837,6 +1837,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'interactive?: boolean',
+        description: 'Keep accepting follow-up prompts from a terminal.',
+        parameters: [],
+      },
+      {
+        signature: 'terminalBridge?: boolean',
+        description: 'Use the versioned stdio transport for the native terminal frontend.',
+        parameters: [],
+      },
+      {
         signature: 'permissionMode?: string',
         description: 'Permission preset to apply before the task; absent preserves session policy.',
         parameters: [],
@@ -9964,10 +9974,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TerminalFrame',
     declaration: 'export type TerminalFrame = {\n    readonly type: \'snapshot\';\n    readonly sequence: number;\n    readonly screen: string;\n    readonly info: WebTerminalInfo;\n    readonly writable: boolean;\n    readonly inputWindow?: RemoteUplinkWindow;\n} | {\n    readonly type: \'output\';\n    readonly sequence: number;\n    readonly data: string;\n} | {\n    readonly type: \'state\';\n    readonly info: WebTerminalInfo;\n    readonly writable: boolean;\n} | {\n    readonly type: \'ack\';\n    readonly sequence: number;\n    readonly refusal?: \'read-only\' | \'not-running\';\n};',
-  },
-  {
-    name: 'TerminalInput',
-    declaration: 'export type TerminalInput = {\n    readonly type: \'write\';\n    readonly sequence: number;\n    readonly data: string;\n    readonly typed?: boolean;\n} | {\n    readonly type: \'resize\';\n    readonly sequence: number;\n    readonly cols: number;\n    readonly rows: number;\n};',
   },
   {
     name: 'TerminalParty',
